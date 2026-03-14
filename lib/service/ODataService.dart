@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:sap341/model/Material.dart';
 import 'package:sap341/model/Stock.dart';
+import 'package:sap341/model/SalesOrder.dart';
 
 class ODataService {
   // Thay đổi các thông số cấu hình dưới đây cho đúng với hệ thống của bạn
   final String baseUrl =
-      "http://<YOUR_SAP_HOST>:<PORT>/sap/opu/odata/sap/Z_GROUP5_1877_PROJ_SRV";
-  final String username = "YOUR_USERNAME";
-  final String password = "YOUR_PASSWORD";
+      "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GROUP5_1877_PROJECT_SRV";
+  final String username = "dev-385";
+  final String password = "doducanh";
 
   // Biến lưu trữ CSRF Token để dùng cho POST/PUT
   String? _csrfToken;
@@ -40,42 +41,75 @@ class ODataService {
     }
   }
 
+  // lib/services/odata_service.dart
+
+  Future<String> createDeepSalesOrder(SalesOrderHeader so) async {
+    await _fetchCsrfToken();
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/SaleOrderHeaderSet"), // Khớp với CASE trong ABAP
+      headers: {
+        ..._authHeader,
+        'X-CSRF-Token': _csrfToken ?? '',
+        'Cookie': _cookie ?? '',
+      },
+      body: jsonEncode(so.toJson()),
+    );
+
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['d']['OrderID']; // ABAP gán lv_salesdocument vào orderid
+    } else {
+      // Backend của bạn dùng add_messages_from_bapi, nên lỗi sẽ trả về rất chi tiết ở đây
+      throw Exception('Lỗi SAP: ${response.body}');
+    }
+  }
+
   // 2. GET MaterialSet (Có phân trang và lọc)
   Future<List<MaterialModel>> fetchMaterials({
     int skip = 0,
     int top = 10,
     String? search,
   }) async {
-    String url =
-        "$baseUrl/MaterialSet?\$skip=$skip&\$top=$top&\$inlinecount=allpages";
+    // PHẢI có dấu gạch chéo trước MaterialSet
+    String url = "$baseUrl/MaterialSet?\$format=json";
 
     if (search != null && search.isNotEmpty) {
-      url += "&\$filter=substringof('$search',MaterialName)";
+      url += "&\$filter=Maktx eq '$search'";
     }
 
     final response = await http.get(Uri.parse(url), headers: _authHeader);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final List results = data['d']['results'];
+
+      // Với dữ liệu XML bạn cung cấp, các trường trong JSON sẽ là Chữ Hoa chữ cái đầu
+      // d -> results -> danh sách các bản ghi
+      final List results = data['d']['results'] ?? [];
       return results.map((json) => MaterialModel.fromJson(json)).toList();
     } else {
-      throw Exception('Lỗi lấy danh sách vật tư');
+      throw Exception('Lỗi kết nối SAP');
     }
   }
 
   // 3. GET StockSet (Kiểm tra tồn kho realtime)
   Future<List<StockModel>> fetchStocks(String materialID) async {
-    String url = "$baseUrl/StockSet?\$filter=MaterialID eq '$materialID'";
+    // Loại bỏ khoảng trắng thừa
+    String cleanID = materialID.trim();
+
+    // URL chuẩn: Chú ý dấu nháy đơn bao quanh giá trị filter
+    String url = "$baseUrl/StockSet?\$filter=Matnr eq '$cleanID'&\$format=json";
 
     final response = await http.get(Uri.parse(url), headers: _authHeader);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final List results = data['d']['results'];
+      print("DỮ LIỆU STOCK THỰC TẾ: ${data['d']}");
+
+      final List results = data['d']['results'] ?? [];
       return results.map((json) => StockModel.fromJson(json)).toList();
     } else {
-      throw Exception('Lỗi kiểm tra tồn kho');
+      throw Exception('Lỗi kết nối');
     }
   }
 

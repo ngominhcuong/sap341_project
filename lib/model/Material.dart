@@ -1,10 +1,11 @@
-// Material Model [cite: 31]
+// lib/model/Material.dart
+
 class MaterialModel {
-  final String materialID; // matnr
-  final String materialName; // maktx
-  final String materialType; // mtart
-  final String baseUnit; // meins
-  final String plant; // werks
+  final String materialID;
+  final String materialName;
+  final String materialType;
+  final String baseUnit;
+  final String plant;
 
   MaterialModel({
     required this.materialID,
@@ -16,11 +17,13 @@ class MaterialModel {
 
   factory MaterialModel.fromJson(Map<String, dynamic> json) {
     return MaterialModel(
-      materialID: json['MaterialID'] ?? '',
-      materialName: json['MaterialName'] ?? '',
-      materialType: json['MaterialType'] ?? '',
-      baseUnit: json['BaseUnit'] ?? '',
-      plant: json['Plant'] ?? '',
+      // Dựa trên XML của bạn: <d:Matnr>, <d:Maktx>, <d:Mtart>, <d:Meins>, <d:Werks>
+      // Lưu ý: OData JSON sẽ giữ nguyên chữ hoa chữ cái đầu
+      materialID: json['Matnr']?.toString() ?? '',
+      materialName: json['Maktx']?.toString() ?? '',
+      materialType: json['Mtart']?.toString() ?? '',
+      baseUnit: json['Meins']?.toString() ?? '',
+      plant: json['Werks']?.toString() ?? '',
     );
   }
 }

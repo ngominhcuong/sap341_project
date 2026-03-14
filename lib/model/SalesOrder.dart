@@ -1,50 +1,55 @@
-class SalesOrderModel {
-  final String? salesOrderID; // VBELN (Số SO sau khi tạo)
-  final String customerID; // KUNNR
-  final String materialID; // MATNR
-  final double quantity; // KWMENG
-  final String plant; // WERKS
-  final String storageLocation; // LGORT
-  final String? status; // Status trả về từ SAP
-  final String? message; // Message trả về từ SAP
+// lib/models/sales_order_model.dart
 
-  SalesOrderModel({
-    this.salesOrderID,
+class SalesOrderHeader {
+  final String docType; // Map với ls_deep_entity-doctype
+  final String salesOrg; // Map với ls_deep_entity-salesorg
+  final String distChannel; // Map với ls_deep_entity-distchannel
+  final String division; // Map với ls_deep_entity-division
+  final String customerID; // Map với ls_deep_entity-customerid
+  final List<SalesOrderItem> items; // Map với to_items
+
+  SalesOrderHeader({
+    required this.docType,
+    required this.salesOrg,
+    required this.distChannel,
+    required this.division,
     required this.customerID,
-    required this.materialID,
-    required this.quantity,
-    required this.plant,
-    required this.storageLocation,
-    this.status,
-    this.message,
+    required this.items,
   });
 
-  // Chuyển dữ liệu sang JSON để POST lên SAP SalesOrderSet
   Map<String, dynamic> toJson() {
     return {
+      'DocType': docType,
+      'SalesOrg': salesOrg,
+      'DistChannel': distChannel,
+      'Division': division,
       'CustomerID': customerID,
-      'MaterialID': materialID,
-      'Quantity': quantity.toString(),
-      'Plant': plant,
-      'StorageLocation': storageLocation,
-      // Các trường mặc định thường có trong dự án SAP
-      'DocType': 'OR',
-      'SalesOrg': '1000',
-      'DistrChan': '10',
-      'Division': '00',
+      'to_items': items
+          .map((i) => i.toJson())
+          .toList(), // Tên phải khớp 'to_items'
     };
   }
+}
 
-  factory SalesOrderModel.fromJson(Map<String, dynamic> json) {
-    return SalesOrderModel(
-      salesOrderID: json['SalesOrderID'],
-      customerID: json['CustomerID'] ?? '',
-      materialID: json['MaterialID'] ?? '',
-      quantity: double.tryParse(json['Quantity'].toString()) ?? 0.0,
-      plant: json['Plant'] ?? '',
-      storageLocation: json['StorageLocation'] ?? '',
-      status: json['Status'],
-      message: json['Message'],
-    );
+class SalesOrderItem {
+  final String itemNo; // vd: '000010'
+  final String materialID;
+  final String plant;
+  final double quantity;
+
+  SalesOrderItem({
+    required this.itemNo,
+    required this.materialID,
+    required this.plant,
+    required this.quantity,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'ItemNo': itemNo,
+      'MaterialID': materialID,
+      'Plant': plant,
+      'Quantity': quantity.toString(),
+    };
   }
 }

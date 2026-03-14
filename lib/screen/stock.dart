@@ -4,32 +4,57 @@ import 'package:sap341/model/Stock.dart';
 
 class StockScreen extends StatelessWidget {
   final String? materialID;
-  StockScreen({this.materialID});
+  final String? materialName;
+
+  StockScreen({this.materialID, this.materialName});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Chi tiết tồn kho')),
+      appBar: AppBar(title: Text(materialName ?? 'Danh mục tồn kho')),
       body: FutureBuilder<List<StockModel>>(
+        // Nếu materialID null, truyền chuỗi rỗng '' vào service
         future: ODataService().fetchStocks(materialID ?? ''),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Lỗi: ${snapshot.error}'));
+          }
+
+          final stocks = snapshot.data ?? [];
+
+          if (stocks.isEmpty) {
+            return Center(child: Text('Vật tư này hiện không còn tồn kho.'));
+          }
+
           return ListView.builder(
-            padding: EdgeInsets.all(10),
-            itemCount: snapshot.data!.length,
+            padding: EdgeInsets.all(12),
+            itemCount: stocks.length,
             itemBuilder: (context, index) {
               final stock = snapshot.data![index];
               return Card(
-                color: stock.availableQty > 10 ? Colors.white : Colors.red[50],
                 child: ListTile(
+                  leading: Icon(Icons.location_on, color: Colors.blue),
+                  // Hiển thị mã kho (lgort) và mã nhà máy (werks)
                   title: Text('Kho: ${stock.storageLocation}'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Nhà máy: ${stock.plant}'),
+                      Text(
+                        'Vật tư: ${stock.materialName}',
+                      ), // Hiện thêm tên vật tư cho dễ nhìn
+                    ],
+                  ),
                   trailing: Text(
                     '${stock.availableQty} ${stock.baseUnit}',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+                      color: stock.availableQty > 0 ? Colors.blue : Colors.red,
                     ),
                   ),
                 ),
