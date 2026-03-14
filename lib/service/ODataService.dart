@@ -8,7 +8,7 @@ import 'package:sap341/model/SalesOrder.dart';
 class ODataService {
   // Thay đổi các thông số cấu hình dưới đây cho đúng với hệ thống của bạn
   final String baseUrl =
-      "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GROUP5_1877_PROJECT_SRV";
+      "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GR5_SE1877_PRJ_SRV";
   final String username = "dev-385";
   final String password = "doducanh";
 
@@ -66,50 +66,52 @@ class ODataService {
   }
 
   // 2. GET MaterialSet (Có phân trang và lọc)
-  Future<List<MaterialModel>> fetchMaterials({
-    int skip = 0,
-    int top = 10,
-    String? search,
-  }) async {
-    // PHẢI có dấu gạch chéo trước MaterialSet
+  Future<List<MaterialModel>> fetchMaterials() async {
+    // Chỉ lấy danh sách, chưa lọc vì Backend ABAP hiện tại chưa bắt filter
     String url = "$baseUrl/MaterialSet?\$format=json";
-
-    if (search != null && search.isNotEmpty) {
-      url += "&\$filter=Maktx eq '$search'";
-    }
 
     final response = await http.get(Uri.parse(url), headers: _authHeader);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-
-      // Với dữ liệu XML bạn cung cấp, các trường trong JSON sẽ là Chữ Hoa chữ cái đầu
-      // d -> results -> danh sách các bản ghi
       final List results = data['d']['results'] ?? [];
       return results.map((json) => MaterialModel.fromJson(json)).toList();
     } else {
-      throw Exception('Lỗi kết nối SAP');
+      throw Exception('Lỗi SAP: ${response.statusCode}');
     }
   }
 
   // 3. GET StockSet (Kiểm tra tồn kho realtime)
-  Future<List<StockModel>> fetchStocks(String materialID) async {
-    // Loại bỏ khoảng trắng thừa
-    String cleanID = materialID.trim();
+  // lib/services/odata_service.dart
 
-    // URL chuẩn: Chú ý dấu nháy đơn bao quanh giá trị filter
-    String url = "$baseUrl/StockSet?\$filter=Matnr eq '$cleanID'&\$format=json";
+  Future<List<StockModel>> fetchStocks({String? materialID}) async {
+    // 1. Dùng list các tham số để nối cho chuẩn
+    List<String> queryParams = ["\$format=json"];
 
-    final response = await http.get(Uri.parse(url), headers: _authHeader);
+    if (materialID != null && materialID.trim().isNotEmpty) {
+      // Quan trọng: Phải bao giá trị trong dấu nháy đơn ' '
+      queryParams.add("\$filter=Materialid eq '${materialID.trim()}'");
+    }
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      print("DỮ LIỆU STOCK THỰC TẾ: ${data['d']}");
+    // 2. Nối các tham số bằng dấu & và bắt đầu bằng ?
+    String fullUrl = "$baseUrl/StockSet?" + queryParams.join("&");
 
-      final List results = data['d']['results'] ?? [];
-      return results.map((json) => StockModel.fromJson(json)).toList();
-    } else {
-      throw Exception('Lỗi kết nối');
+    print("DEBUG URL GỌI SAP: $fullUrl");
+
+    try {
+      final response = await http.get(Uri.parse(fullUrl), headers: _authHeader);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List results = data['d']['results'] ?? [];
+        return results.map((json) => StockModel.fromJson(json)).toList();
+      } else {
+        print("Lỗi SAP ${response.statusCode}: ${response.body}");
+        return [];
+      }
+    } catch (e) {
+      print("Lỗi kết nối: $e");
+      return [];
     }
   }
 

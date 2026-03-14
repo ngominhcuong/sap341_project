@@ -17,13 +17,16 @@ class MaterialModel {
 
   factory MaterialModel.fromJson(Map<String, dynamic> json) {
     return MaterialModel(
-      // Dựa trên XML của bạn: <d:Matnr>, <d:Maktx>, <d:Mtart>, <d:Meins>, <d:Werks>
-      // Lưu ý: OData JSON sẽ giữ nguyên chữ hoa chữ cái đầu
+      // Key khớp với SELECT a~matnr
       materialID: json['Matnr']?.toString() ?? '',
+      // Key khớp với SELECT b~maktx
       materialName: json['Maktx']?.toString() ?? '',
+      // Key khớp với SELECT a~mtart
       materialType: json['Mtart']?.toString() ?? '',
+      // Key khớp với SELECT a~meins
       baseUnit: json['Meins']?.toString() ?? '',
-      plant: json['Werks']?.toString() ?? '',
+      // Gán mặc định vì bạn đã bỏ Plant ở Backend
+      plant: '',
     );
   }
 }
