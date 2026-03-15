@@ -5,7 +5,7 @@ import 'package:sap341/screen/create_so.dart';
 
 class MainMenuScreen extends StatelessWidget {
   // Đồng bộ tông màu xanh Forest sang trọng
-  final Color primaryGreen = Color(0xFF1B5E20);
+  final Color primaryGreen = Color.fromRGBO(27, 94, 32, 1);
   final Color accentGreen = Color(0xFF2E7D32);
   final Color backgroundLight = Color(0xFFF2F5F2);
 
@@ -25,29 +25,29 @@ class MainMenuScreen extends StatelessWidget {
               children: [
                 _buildMenuItem(
                   context,
-                  'Vật tư',
-                  'Tra cứu danh mục',
+                  'View Material',
+                  'Tra cứu danh mục vật tư',
                   Icons.inventory_2_outlined,
                   MaterialListScreen(),
                 ),
                 _buildMenuItem(
                   context,
-                  'Tồn kho',
-                  'Kiểm tra số lượng',
+                  'View Stock',
+                  'Kiểm tra số lượng tồn kho',
                   Icons.warehouse_outlined,
                   StockScreen(),
                 ),
                 _buildMenuItem(
                   context,
-                  'Sales Order',
+                  'Create Sales Order',
                   'Tạo đơn hàng mới',
                   Icons.add_shopping_cart_rounded,
                   CreateSOScreen(),
                 ),
                 _buildMenuItem(
                   context,
-                  'Báo cáo',
-                  'Thống kê hệ thống',
+                  'View Sales Order',
+                  'Xem đơn hàng đã tạo',
                   Icons.insert_chart_outlined_rounded,
                   null,
                 ),

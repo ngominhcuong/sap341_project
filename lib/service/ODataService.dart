@@ -7,7 +7,7 @@ import 'package:sap341/model/Stock.dart';
 class ODataService {
   final String baseUrl =
       "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GR5_SE1877_PRJ_SRV";
-  final String username = "dev-";
+  final String username = "dev-385";
   final String password = "";
 
   // Bộ nhớ đệm cho bảo mật
@@ -47,10 +47,14 @@ class ODataService {
   }
 
   // --- 1. TẠO SALES ORDER (DEEP INSERT) ---
+  // lib/service/ODataService.dart
+
+  // lib/service/ODataService.dart
+
   Future<Map<String, dynamic>> createSalesOrder(
     Map<String, dynamic> payload,
   ) async {
-    // Luôn fetch token mới trước khi POST để đảm bảo session còn sống
+    // Bước 1: Luôn Fetch token mới nhất ngay trước khi POST
     await _fetchCsrfToken();
 
     final response = await http.post(
@@ -64,12 +68,26 @@ class ODataService {
     );
 
     if (response.statusCode == 201) {
-      // Thành công: SAP trả về dữ liệu đơn hàng vừa tạo
-      return jsonDecode(response.body)['d'];
+      final responseData = jsonDecode(response.body)['d'];
+
+      // Bước 2: Chỉ trừ kho khi tạo đơn thành công
+      if (payload.containsKey('To_Items')) {
+        List items = payload['To_Items'];
+        for (var item in items) {
+          await updateStock(
+            matnr: item['Materialid'] ?? '',
+            werks: item['Plant'] ?? '',
+            lgort: item['Storageloc'] ?? '',
+            qty: item['Quantity'] ?? '0',
+            // Sử dụng trường tạm từ UI gửi qua để phục vụ updateStock
+            meins: item['_InternalBaseUnit'] ?? 'PC',
+          );
+        }
+      }
+      return responseData;
     } else {
-      // Thất bại: Trả về chi tiết lỗi từ backend ABAP (BAPI Return)
-      print("LỖI TẠO ĐƠN: ${response.body}");
-      throw Exception('Lỗi SAP (${response.statusCode}): ${response.body}');
+      // Trả về lỗi chi tiết từ SAP (như hình 2 bạn gửi)
+      throw Exception(response.body);
     }
   }
 
@@ -113,15 +131,19 @@ class ODataService {
   }
 
   // --- 4. CẬP NHẬT TỒN KHO (PUT) ---
-  Future<bool> updateStock(
-    String matnr,
-    String werks,
-    String lgort,
-    double qty,
-  ) async {
+  // lib/services/odata_service.dart
+
+  // --- 4. CẬP NHẬT TỒN KHO (Kích hoạt BAPI_GOODSMVT_CREATE ở Backend) ---
+  Future<bool> updateStock({
+    required String matnr,
+    required String werks,
+    required String lgort,
+    required String qty,
+    required String meins,
+  }) async {
     await _fetchCsrfToken();
 
-    // URL OData cho Update (PUT) yêu cầu chỉ định Key cụ thể
+    // Lưu ý: Đảm bảo Materialid, Plant, Storageloc viết HOA/thường đúng như trong SEGW
     String url =
         "$baseUrl/StockUpdateSet(Materialid='$matnr',Plant='$werks',Storageloc='$lgort')";
 
@@ -136,9 +158,20 @@ class ODataService {
         "Materialid": matnr,
         "Plant": werks,
         "Storageloc": lgort,
-        "Quantity": qty.toString(),
+        "Quantity": qty, // Đảm bảo Backend nhận được chuỗi số (Vd: "10.000")
+        "Movetype": "551",
+        "Baseunit": meins, // Backend của bạn dùng ls_request-baseunit
       }),
     );
+
+    // QUAN TRỌNG: Kiểm tra xem SAP trả về cái gì
+    print("DEBUG STATUS: ${response.statusCode}");
+    print("DEBUG BODY: ${response.body}");
+
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      // Nếu lỗi, in ra để debug
+      print("Lỗi trừ kho từ SAP: ${response.body}");
+    }
 
     return response.statusCode == 204 || response.statusCode == 200;
   }

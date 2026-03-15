@@ -34,7 +34,14 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
 
   // Danh sách Items lồng nhau (Deep Entity)
   List<Map<String, dynamic>> _items = [
-    {'MaterialID': '', 'Quantity': '1', 'Plant': '1000', 'ItemNo': '000010'},
+    {
+      'MaterialID': '',
+      'Quantity': '1',
+      'Plant': '1000',
+      'ItemNo': '000010',
+      'BaseUnit': 'EA', // Thêm mặc định hoặc lấy từ StockSet
+      'Storageloc': 'FG00', // Thêm trường này để lưu Storage Location
+    },
   ];
 
   void _addItem() {
@@ -55,12 +62,26 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     }
   }
 
+  // Trong file lib/screen/create_so.dart
+
   Future<void> _submitOrder() async {
     if (_customerController.text.isEmpty) return;
+
+    // Kiểm tra trước: Update Stock bắt buộc phải có Storageloc từ dữ liệu Stock đã load
+    for (var item in _items) {
+      if (item['Storageloc'] == null || item['Storageloc'].isEmpty) {
+        _showErrorSnackBar(
+          "Vật tư ${item['MaterialID']} chưa chọn kho xuất (Storage Location)",
+        );
+        return;
+      }
+    }
+
     setState(() => _isSending = true);
 
-    // 1. Chuẩn bị Payload cho Sales Order
-    Map<String, dynamic> payload = {
+    // 1. PAYLOAD CHO SALES ORDER: Không bao gồm Storageloc và BaseUnit
+    // Để tránh lỗi "Property invalid"
+    Map<String, dynamic> soPayload = {
       "Doctype": _docTypeController.text,
       "Customerid": _customerController.text,
       "Salesorg": _salesOrgController.text,
@@ -79,25 +100,27 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     };
 
     try {
-      // Bước A: Tạo Sales Order
-      final result = await _service.createSalesOrder(payload);
-      String newOrderId = result['Orderid'] ?? "Thành công";
+      // 2. TẠO SALES ORDER TRƯỚC
+      // ODataService sẽ fetch CSRF Token và Cookie tự động
+      final result = await _service.createSalesOrder(soPayload);
+      String orderId = result['Orderid'] ?? "Thành công";
 
-      // Bước B: Trừ tồn kho (Gọi cho từng dòng vật tư)
-      // Lưu ý: Ở bước này ta dùng Movement Type '601' (Xuất kho bán hàng)
-      // hoặc theo Type mà bạn đã định nghĩa trong Backend.
+      // 3. CẬP NHẬT KHO: Lúc này mới dùng Storageloc và BaseUnit
+      // Duyệt danh sách _items gốc (nơi chứa dữ liệu kho bạn đã chọn)
       for (var item in _items) {
         await _service.updateStock(
-          item['MaterialID'],
-          item['Plant'],
-          "0001", // Storage Location mặc định hoặc lấy từ UI
-          double.parse(item['Quantity']),
+          matnr: item['MaterialID'],
+          werks: item['Plant'],
+          lgort: item['Storageloc'], // Lấy từ Stock
+          qty: item['Quantity'],
+          meins: item['BaseUnit'] ?? 'PC',
         );
       }
 
-      _showSuccessDialog(newOrderId);
+      _showSuccessDialog(orderId);
     } catch (e) {
-      _showErrorSnackBar("Lỗi: $e");
+      // Xử lý các lỗi như Material không thuộc Sales Org
+      _showErrorSnackBar("Lỗi SAP: $e");
     } finally {
       setState(() => _isSending = false);
     }
