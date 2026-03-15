@@ -1,18 +1,16 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:sap341/model/Material.dart';
 import 'package:sap341/model/Stock.dart';
-import 'package:sap341/model/SalesOrder.dart';
 
 class ODataService {
-  // Thay đổi các thông số cấu hình dưới đây cho đúng với hệ thống của bạn
   final String baseUrl =
       "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GR5_SE1877_PRJ_SRV";
-  final String username = "dev-385";
-  final String password = "doducanh";
+  final String username = "dev-";
+  final String password = "";
 
-  // Biến lưu trữ CSRF Token để dùng cho POST/PUT
+  // Bộ nhớ đệm cho bảo mật
   String? _csrfToken;
   String? _cookie;
 
@@ -28,46 +26,55 @@ class ODataService {
     };
   }
 
-  // 1. Hàm lấy CSRF Token (Bắt buộc để POST SalesOrder hoặc PUT Stock)
+  // --- HÀM QUAN TRỌNG: Lấy Token và giữ Session ---
   Future<void> _fetchCsrfToken() async {
+    // Gọi một yêu cầu GET nhẹ nhàng để lấy Token
     final response = await http.get(
-      Uri.parse(baseUrl + "/"),
+      Uri.parse("$baseUrl/"),
       headers: {..._authHeader, 'X-CSRF-Token': 'Fetch'},
     );
 
-    if (response.statusCode == 200) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       _csrfToken = response.headers['x-csrf-token'];
+
+      // Lấy toàn bộ Cookie trả về (SAP có thể trả về nhiều dòng Set-Cookie)
       _cookie = response.headers['set-cookie'];
+
+      print("DEBUG: Đã lấy Token thành công: $_csrfToken");
+    } else {
+      print("DEBUG: Không lấy được Token. Mã lỗi: ${response.statusCode}");
     }
   }
 
-  // lib/services/odata_service.dart
-
-  Future<String> createDeepSalesOrder(SalesOrderHeader so) async {
+  // --- 1. TẠO SALES ORDER (DEEP INSERT) ---
+  Future<Map<String, dynamic>> createSalesOrder(
+    Map<String, dynamic> payload,
+  ) async {
+    // Luôn fetch token mới trước khi POST để đảm bảo session còn sống
     await _fetchCsrfToken();
 
     final response = await http.post(
-      Uri.parse("$baseUrl/SaleOrderHeaderSet"), // Khớp với CASE trong ABAP
+      Uri.parse('$baseUrl/SalesOrderHeaderSet'),
       headers: {
         ..._authHeader,
         'X-CSRF-Token': _csrfToken ?? '',
-        'Cookie': _cookie ?? '',
+        'Cookie': _cookie ?? '', // Bắt buộc phải có Cookie đi kèm Token
       },
-      body: jsonEncode(so.toJson()),
+      body: jsonEncode(payload),
     );
 
     if (response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      return data['d']['OrderID']; // ABAP gán lv_salesdocument vào orderid
+      // Thành công: SAP trả về dữ liệu đơn hàng vừa tạo
+      return jsonDecode(response.body)['d'];
     } else {
-      // Backend của bạn dùng add_messages_from_bapi, nên lỗi sẽ trả về rất chi tiết ở đây
-      throw Exception('Lỗi SAP: ${response.body}');
+      // Thất bại: Trả về chi tiết lỗi từ backend ABAP (BAPI Return)
+      print("LỖI TẠO ĐƠN: ${response.body}");
+      throw Exception('Lỗi SAP (${response.statusCode}): ${response.body}');
     }
   }
 
-  // 2. GET MaterialSet (Có phân trang và lọc)
+  // --- 2. LẤY DANH SÁCH VẬT TƯ ---
   Future<List<MaterialModel>> fetchMaterials() async {
-    // Chỉ lấy danh sách, chưa lọc vì Backend ABAP hiện tại chưa bắt filter
     String url = "$baseUrl/MaterialSet?\$format=json";
 
     final response = await http.get(Uri.parse(url), headers: _authHeader);
@@ -77,84 +84,46 @@ class ODataService {
       final List results = data['d']['results'] ?? [];
       return results.map((json) => MaterialModel.fromJson(json)).toList();
     } else {
-      throw Exception('Lỗi SAP: ${response.statusCode}');
+      throw Exception('Lỗi lấy vật tư: ${response.statusCode}');
     }
   }
 
-  // 3. GET StockSet (Kiểm tra tồn kho realtime)
-  // lib/services/odata_service.dart
-
+  // --- 3. KIỂM TRA TỒN KHO ---
   Future<List<StockModel>> fetchStocks({String? materialID}) async {
-    // 1. Dùng list các tham số để nối cho chuẩn
     List<String> queryParams = ["\$format=json"];
 
     if (materialID != null && materialID.trim().isNotEmpty) {
-      // Quan trọng: Phải bao giá trị trong dấu nháy đơn ' '
       queryParams.add("\$filter=Materialid eq '${materialID.trim()}'");
     }
 
-    // 2. Nối các tham số bằng dấu & và bắt đầu bằng ?
     String fullUrl = "$baseUrl/StockSet?" + queryParams.join("&");
-
-    print("DEBUG URL GỌI SAP: $fullUrl");
 
     try {
       final response = await http.get(Uri.parse(fullUrl), headers: _authHeader);
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List results = data['d']['results'] ?? [];
         return results.map((json) => StockModel.fromJson(json)).toList();
       } else {
-        print("Lỗi SAP ${response.statusCode}: ${response.body}");
         return [];
       }
     } catch (e) {
-      print("Lỗi kết nối: $e");
       return [];
     }
   }
 
-  // 4. POST SalesOrderSet (Tạo đơn hàng)
-  Future<Map<String, dynamic>> createSalesOrder(
-    Map<String, dynamic> payload,
-  ) async {
-    // Bước A: Lấy token mới trước khi tạo
-    await _fetchCsrfToken();
-
-    final response = await http.post(
-      Uri.parse("$baseUrl/SalesOrderSet"),
-      headers: {
-        ..._authHeader,
-        'X-CSRF-Token': _csrfToken ?? '',
-        'Cookie': _cookie ?? '',
-      },
-      body: jsonEncode(payload),
-    );
-
-    if (response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      return data['d']; // Trả về thông tin SalesOrder vừa tạo (gồm VBELN)
-    } else {
-      final error = jsonDecode(response.body);
-      throw Exception(
-        error['error']['message']['value'] ?? 'Lỗi tạo Sales Order',
-      );
-    }
-  }
-
-  // 5. PUT StockUpdateSet (Cập nhật tồn kho sau khi bán)
+  // --- 4. CẬP NHẬT TỒN KHO (PUT) ---
   Future<bool> updateStock(
     String matnr,
     String werks,
     String lgort,
-    double newQty,
+    double qty,
   ) async {
     await _fetchCsrfToken();
 
-    // Cấu trúc URL OData PUT thường là: EntitySet(Key1='val', Key2='val')
+    // URL OData cho Update (PUT) yêu cầu chỉ định Key cụ thể
     String url =
-        "$baseUrl/StockUpdateSet(MaterialID='$matnr',Plant='$werks',StorageLocation='$lgort')";
+        "$baseUrl/StockUpdateSet(Materialid='$matnr',Plant='$werks',Storageloc='$lgort')";
 
     final response = await http.put(
       Uri.parse(url),
@@ -164,10 +133,10 @@ class ODataService {
         'Cookie': _cookie ?? '',
       },
       body: jsonEncode({
-        "MaterialID": matnr,
+        "Materialid": matnr,
         "Plant": werks,
-        "StorageLocation": lgort,
-        "AvailableQty": newQty.toString(),
+        "Storageloc": lgort,
+        "Quantity": qty.toString(),
       }),
     );
 
