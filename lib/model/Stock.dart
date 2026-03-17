@@ -1,16 +1,18 @@
 class StockModel {
-  final String materialID; // materialid
-  final String plant; // plant
-  final String storageLocation; // storageloc
-  final double availableQty; // availablestock
-  final String baseUnit; // baseunit
+  final String materialID;
+  final String storageLocation;
+  final String plant;
+  final String baseUnit;
+
+  // XÓA 'final' ở dòng này để có thể thay đổi giá trị
+  double availableQty;
 
   StockModel({
     required this.materialID,
-    required this.plant,
     required this.storageLocation,
-    required this.availableQty,
+    required this.plant,
     required this.baseUnit,
+    required this.availableQty, // Đảm bảo constructor vẫn nhận giá trị này
   });
 
   factory StockModel.fromJson(Map<String, dynamic> json) {
@@ -23,4 +25,15 @@ class StockModel {
       baseUnit: json['Baseunit']?.toString() ?? '',
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StockModel &&
+          runtimeType == other.runtimeType &&
+          storageLocation == other.storageLocation &&
+          materialID == other.materialID;
+
+  @override
+  int get hashCode => storageLocation.hashCode ^ materialID.hashCode;
 }

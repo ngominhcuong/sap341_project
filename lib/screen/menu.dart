@@ -4,7 +4,6 @@ import 'package:sap341/screen/stock.dart';
 import 'package:sap341/screen/create_so.dart';
 
 class MainMenuScreen extends StatelessWidget {
-  // Đồng bộ tông màu xanh Forest sang trọng
   final Color primaryGreen = Color.fromRGBO(27, 94, 32, 1);
   final Color accentGreen = Color(0xFF2E7D32);
   final Color backgroundLight = Color(0xFFF2F5F2);
@@ -15,7 +14,7 @@ class MainMenuScreen extends StatelessWidget {
       backgroundColor: backgroundLight,
       body: Column(
         children: [
-          _buildSystemHeader(context), // Header chỉ có tên hệ thống
+          _buildSystemHeader(context),
           Expanded(
             child: GridView.count(
               padding: EdgeInsets.symmetric(horizontal: 25, vertical: 30),
@@ -59,7 +58,7 @@ class MainMenuScreen extends StatelessWidget {
     );
   }
 
-  // --- HEADER CHỈ HIỂN THỊ TÊN HỆ THỐNG (MINIMALIST) ---
+  // --- Header hien thi ten he thong ---
   Widget _buildSystemHeader(BuildContext context) {
     return Container(
       padding: EdgeInsets.only(
@@ -87,7 +86,7 @@ class MainMenuScreen extends StatelessWidget {
             style: TextStyle(
               color: Colors.white,
               fontSize: 22,
-              fontWeight: FontWeight.w900, // Đậm nét doanh nghiệp
+              fontWeight: FontWeight.w900,
               letterSpacing: 1.5,
               height: 1.3,
             ),
@@ -106,7 +105,7 @@ class MainMenuScreen extends StatelessWidget {
     );
   }
 
-  // --- MENU ITEM CARD ---
+  // --- Cac card item lua chon ---
   Widget _buildMenuItem(
     BuildContext context,
     String title,

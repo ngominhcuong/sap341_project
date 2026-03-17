@@ -5,21 +5,39 @@ import 'package:sap341/model/Material.dart';
 import 'package:sap341/screen/stock.dart';
 
 class MaterialListScreen extends StatefulWidget {
+  final bool isPicker;
+  const MaterialListScreen({Key? key, this.isPicker = false}) : super(key: key);
+
   @override
   _MaterialListScreenState createState() => _MaterialListScreenState();
 }
 
 class _MaterialListScreenState extends State<MaterialListScreen> {
   final ODataService _service = ODataService();
-  List<MaterialModel> _materials = [];
+
+  List<MaterialModel> _allMaterials = [];
   List<MaterialModel> _filteredMaterials = [];
+  List<MaterialModel> _pagedMaterials = [];
+
+  List<String> _unitOptions = ['Tất cả'];
+  List<String> _plantOptions = ['Tất cả'];
+
+  String _selectedUnit = 'Tất cả';
+  String _selectedPlant = 'Tất cả';
+  String _searchKeyword = '';
+
   bool _isLoading = true;
+  bool _isFilterExpanded = false; // Trạng thái đóng/mở bộ lọc
+  int _currentPage = 1;
+  final int _pageSize = 10;
+
   TextEditingController _searchController = TextEditingController();
 
-  // Tông màu xanh lá cây Forest & Emerald sang trọng
-  final Color primaryGreen = Color(0xFF1B5E20);
-  final Color accentGreen = Color(0xFF2E7D32);
-  final Color backgroundLight = Color(0xFFF2F5F2);
+  // Palette màu sắc từ ví dụ của bạn
+  final Color primaryGreen = const Color(0xFF1B5E20);
+  final Color accentGreen = const Color(0xFF2E7D32);
+  final Color backgroundLight = const Color(0xFFF2F5F2);
+  final Color darkText = const Color(0xFF0D2110);
 
   @override
   void initState() {
@@ -27,80 +45,122 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
     _loadData();
   }
 
-  _loadData() async {
+  // --- LOGIC DỮ LIỆU ---
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final data = await _service.fetchMaterials();
-      await Future.delayed(Duration(milliseconds: 600));
-      setState(() {
-        _materials = data;
-        _filteredMaterials = data;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _allMaterials = data;
+          _unitOptions = [
+            'Tất cả',
+            ...data.map((e) => e.baseUnit).toSet().toList(),
+          ];
+          _plantOptions = [
+            'Tất cả',
+            ...data
+                .map((e) => e.plant.isEmpty ? "MI00" : e.plant)
+                .toSet()
+                .toList(),
+          ];
+          _runFilter();
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showErrorSnackBar("Lỗi SAP: $e");
+      }
     }
   }
 
-  void _runFilter(String enteredKeyword) {
+  void _runFilter() {
     setState(() {
-      _filteredMaterials = _materials
-          .where(
-            (item) =>
-                item.materialName.toLowerCase().contains(
-                  enteredKeyword.toLowerCase(),
-                ) ||
-                item.materialID.toLowerCase().contains(
-                  enteredKeyword.toLowerCase(),
-                ),
-          )
-          .toList();
+      _filteredMaterials = _allMaterials.where((item) {
+        final matchesSearch =
+            item.materialName.toLowerCase().contains(
+              _searchKeyword.toLowerCase(),
+            ) ||
+            item.materialID.toLowerCase().contains(
+              _searchKeyword.toLowerCase(),
+            );
+        final matchesUnit =
+            _selectedUnit == 'Tất cả' || item.baseUnit == _selectedUnit;
+        final itemPlant = item.plant.isEmpty ? "MI00" : item.plant;
+        final matchesPlant =
+            _selectedPlant == 'Tất cả' || itemPlant == _selectedPlant;
+        return matchesSearch && matchesUnit && matchesPlant;
+      }).toList();
+
+      _currentPage = 1;
+      _updatePagedList();
+    });
+  }
+
+  void _updatePagedList() {
+    int start = (_currentPage - 1) * _pageSize;
+    int end = start + _pageSize;
+    if (end > _filteredMaterials.length) end = _filteredMaterials.length;
+
+    setState(() {
+      _pagedMaterials = _filteredMaterials.isEmpty
+          ? []
+          : _filteredMaterials.sublist(start, end);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    int totalPages = (_filteredMaterials.length / _pageSize).ceil();
+
     return Scaffold(
       backgroundColor: backgroundLight,
       body: Column(
         children: [
-          _buildElegantHeader(), // Header nền xanh lá, phẳng, có nút Back
+          _buildElegantHeader(),
           Expanded(
-            child: _isLoading ? _buildLoadingSkeleton() : _buildMaterialList(),
+            child: _isLoading
+                ? _buildLoadingSkeleton()
+                : Column(
+                    children: [
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          child: _buildMaterialList(
+                            key: ValueKey(_currentPage),
+                          ),
+                        ),
+                      ),
+                      if (totalPages > 1) _buildSlidingPagination(totalPages),
+                    ],
+                  ),
           ),
         ],
       ),
     );
   }
 
-  // --- HEADER PHẲNG (KHÔNG BO GÓC) & CÓ NÚT BACK ---
+  // --- UI: HEADER & BỘ LỌC THU GỌN ---
   Widget _buildElegantHeader() {
     return Container(
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 10,
-        bottom: 25,
-        left: 10,
-        right: 20,
+        bottom: 15,
+        left: 15,
+        right: 15,
       ),
-      width: double.infinity,
       decoration: BoxDecoration(
         color: primaryGreen,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-        ],
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Nút Back và Tiêu đề
           Row(
             children: [
               IconButton(
-                icon: Icon(
+                icon: const Icon(
                   Icons.arrow_back_ios_new,
                   color: Colors.white,
                   size: 20,
@@ -108,97 +168,180 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
                 onPressed: () => Navigator.pop(context),
               ),
               Text(
-                "Danh sách vật tư",
-                style: TextStyle(
-                  fontSize: 24,
+                widget.isPicker ? "Chọn Vật Tư" : "Kho Vật Tư SAP",
+                style: const TextStyle(
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
-                  letterSpacing: -0.5,
                 ),
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 45, top: 0),
-            child: Text(
-              "Quản lý và tra cứu thông tin vật tư hệ thống",
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 12,
-              ),
-            ),
-          ),
-          SizedBox(height: 20),
-          // Thanh tìm kiếm cách lề để cân đối với nút Back phía trên
-          Padding(
-            padding: const EdgeInsets.only(left: 10),
-            child: Container(
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: TextField(
-                controller: _searchController,
-                onChanged: _runFilter,
-                style: TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Tìm kiếm tên hoặc mã vật tư...',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 14,
-                  ),
-                  prefixIcon: Icon(Icons.search_rounded, color: Colors.white70),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
+          const SizedBox(height: 10),
+          _buildSearchBox(),
+          _buildFilterToggle(),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: _isFilterExpanded
+                ? _buildExpandedFilters()
+                : const SizedBox.shrink(),
           ),
         ],
       ),
     );
   }
 
-  // --- GIỮ NGUYÊN DANH SÁCH & CARD NHƯ TRƯỚC ---
-  Widget _buildLoadingSkeleton() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: ListView.builder(
-        padding: EdgeInsets.only(top: 15),
-        itemCount: 6,
-        itemBuilder: (_, __) => Container(
-          height: 130,
-          margin: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
+  Widget _buildSearchBox() {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (v) {
+          _searchKeyword = v;
+          _runFilter();
+        },
+        style: const TextStyle(color: Colors.white),
+        decoration: const InputDecoration(
+          hintText: 'Tìm kiếm vật tư...',
+          hintStyle: TextStyle(color: Colors.white54, fontSize: 14),
+          prefixIcon: Icon(Icons.search, color: Colors.white70),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(vertical: 12),
         ),
       ),
     );
   }
 
-  Widget _buildMaterialList() {
-    return RefreshIndicator(
-      color: accentGreen,
-      onRefresh: () => _loadData(),
-      child: ListView.builder(
-        padding: EdgeInsets.only(top: 10, bottom: 20),
-        itemCount: _filteredMaterials.length,
-        itemBuilder: (context, index) {
-          final item = _filteredMaterials[index];
-          return _buildMaterialCard(item);
-        },
+  Widget _buildFilterToggle() {
+    return InkWell(
+      onTap: () => setState(() => _isFilterExpanded = !_isFilterExpanded),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _isFilterExpanded ? Icons.keyboard_arrow_up : Icons.tune,
+              color: Colors.white70,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _isFilterExpanded
+                  ? "Ẩn bộ lọc nâng cao"
+                  : "Lọc theo Đơn vị & Nhà máy",
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildExpandedFilters() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildLabeledFilter(
+              "Base Unit",
+              _unitOptions,
+              _selectedUnit,
+              (v) {
+                setState(() => _selectedUnit = v!);
+                _runFilter();
+              },
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: _buildLabeledFilter("Plant", _plantOptions, _selectedPlant, (
+              v,
+            ) {
+              setState(() => _selectedPlant = v!);
+              _runFilter();
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabeledFilter(
+    String label,
+    List<String> options,
+    String currentVal,
+    ValueChanged<String?> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: currentVal,
+              isExpanded: true,
+              style: TextStyle(
+                color: primaryGreen,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              items: options
+                  .map(
+                    (e) => DropdownMenuItem(
+                      value: e,
+                      child: Text(e, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- UI: CARD VẬT TƯ CHI TIẾT (PHIÊN BẢN CŨ NÂNG CẤP) ---
+  Widget _buildMaterialList({Key? key}) {
+    if (_pagedMaterials.isEmpty)
+      return const Center(child: Text("Không tìm thấy dữ liệu"));
+    return ListView.builder(
+      key: key,
+      padding: const EdgeInsets.only(top: 10, bottom: 20),
+      itemCount: _pagedMaterials.length,
+      itemBuilder: (context, index) =>
+          _buildMaterialCard(_pagedMaterials[index]),
     );
   }
 
   Widget _buildMaterialCard(MaterialModel item) {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -206,7 +349,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 10,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -214,15 +357,19 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => StockScreen(
-                materialID: item.materialID,
-                materialName: item.materialName,
-              ),
-            ),
-          ),
+          onTap: () {
+            if (widget.isPicker) {
+              // Nếu là chế độ chọn vật tư (cho đơn hàng), trả về item
+              Navigator.pop(context, item);
+            } else {
+              // Nếu không phải Picker, có thể không làm gì hoặc mở trang Stock tổng
+              // Không truyền materialID vào nữa để StockScreen tự load ALL
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StockScreen()),
+              );
+            }
+          },
           child: Padding(
             padding: const EdgeInsets.all(20.0),
             child: Column(
@@ -236,19 +383,19 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
                         item.materialName,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Color(0xFF0D2110),
+                          fontSize: 17,
+                          color: darkText,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    _buildTag(item.materialType, accentGreen),
+                    _buildTag(item.materialType ?? "N/A", accentGreen),
                   ],
                 ),
-                SizedBox(height: 15),
-                Divider(color: Color(0xFFEDF2ED), thickness: 1.5),
-                SizedBox(height: 15),
+                const SizedBox(height: 15),
+                const Divider(color: Color(0xFFEDF2ED), thickness: 1.5),
+                const SizedBox(height: 15),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -261,7 +408,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
                     _buildSpecItem(
                       Icons.warehouse_rounded,
                       "Plant",
-                      item.plant.isEmpty ? "All" : item.plant,
+                      item.plant.isEmpty ? "MI00" : item.plant,
                     ),
                   ],
                 ),
@@ -275,7 +422,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
 
   Widget _buildTag(String label, Color color) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
@@ -286,7 +433,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.bold,
-          fontSize: 11,
+          fontSize: 10,
         ),
       ),
     );
@@ -300,24 +447,144 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
           Row(
             children: [
               Icon(icon, size: 14, color: Colors.green[200]),
-              SizedBox(width: 4),
+              const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(color: Colors.grey[500], fontSize: 11),
               ),
             ],
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
             value,
-            style: TextStyle(
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 14,
+              fontSize: 13,
               color: Color(0xFF2E3D31),
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
   }
+
+  // --- UI: PHÂN TRANG SLIDING << < 1 2 3 4 5 > >> ---
+  Widget _buildSlidingPagination(int totalPages) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _pageIconBtn(Icons.first_page, () => _goToPage(1), _currentPage > 1),
+          _pageIconBtn(
+            Icons.chevron_left,
+            () => _goToPage(_currentPage - 1),
+            _currentPage > 1,
+          ),
+          ..._generateVisiblePages(totalPages).map((p) => _pageNumberBtn(p)),
+          _pageIconBtn(
+            Icons.chevron_right,
+            () => _goToPage(_currentPage + 1),
+            _currentPage < totalPages,
+          ),
+          _pageIconBtn(
+            Icons.last_page,
+            () => _goToPage(totalPages),
+            _currentPage < totalPages,
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<int> _generateVisiblePages(int totalPages) {
+    int start = _currentPage - 2;
+    int end = _currentPage + 2;
+    if (start < 1) {
+      end = (end + (1 - start)).clamp(1, totalPages);
+      start = 1;
+    }
+    if (end > totalPages) {
+      start = (start - (end - totalPages)).clamp(1, totalPages);
+      end = totalPages;
+    }
+    List<int> pages = [];
+    for (int i = start; i <= end; i++) {
+      pages.add(i);
+    }
+    return pages;
+  }
+
+  Widget _pageNumberBtn(int page) {
+    bool isSelected = _currentPage == page;
+    return GestureDetector(
+      onTap: () => _goToPage(page),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: isSelected ? accentGreen : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? accentGreen : Colors.grey.shade300,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          "$page",
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pageIconBtn(IconData icon, VoidCallback onTap, bool enabled) {
+    return IconButton(
+      icon: Icon(
+        icon,
+        color: enabled ? accentGreen : Colors.grey.shade300,
+        size: 24,
+      ),
+      onPressed: enabled ? onTap : null,
+      splashRadius: 20,
+    );
+  }
+
+  void _goToPage(int p) {
+    if (p == _currentPage) return;
+    setState(() {
+      _currentPage = p;
+      _updatePagedList();
+    });
+  }
+
+  Widget _buildLoadingSkeleton() => Shimmer.fromColors(
+    baseColor: Colors.grey[300]!,
+    highlightColor: Colors.grey[100]!,
+    child: ListView.builder(
+      itemCount: 5,
+      itemBuilder: (_, __) => Container(
+        height: 120,
+        margin: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    ),
+  );
+
+  void _showErrorSnackBar(String m) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
 }

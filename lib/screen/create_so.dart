@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sap341/service/ODataService.dart';
+import 'package:sap341/model/Material.dart';
+import 'package:sap341/screen/material_list.dart';
+import 'package:sap341/screen/good_issue.dart';
+import 'package:sap341/model/Stock.dart';
 
 class CreateSOScreen extends StatefulWidget {
   @override
@@ -10,12 +14,13 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
   final ODataService _service = ODataService();
   bool _isSending = false;
 
-  // Tông màu Emerald SAP sang trọng
+  // FIX LỖI 1: Khai báo biến quản lý kho đã chọn
+  Map<int, StockModel?> _selectedStocks = {};
+
   final Color primaryGreen = Color(0xFF1B5E20);
   final Color accentGreen = Color(0xFF2E7D32);
   final Color backgroundLight = Color(0xFFF2F5F2);
 
-  // Controllers cho thông tin Header (Đầy đủ 5 trường)
   final TextEditingController _docTypeController = TextEditingController(
     text: 'OR',
   );
@@ -32,15 +37,13 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     text: '00',
   );
 
-  // Danh sách Items lồng nhau (Deep Entity)
   List<Map<String, dynamic>> _items = [
     {
+      'ItemNo': '000010',
       'MaterialID': '',
       'Quantity': '1',
       'Plant': '1000',
-      'ItemNo': '000010',
-      'BaseUnit': 'EA', // Thêm mặc định hoặc lấy từ StockSet
-      'Storageloc': 'FG00', // Thêm trường này để lưu Storage Location
+      'BaseUnit': 'PC',
     },
   ];
 
@@ -48,10 +51,11 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     setState(() {
       int nextNo = (_items.length + 1) * 10;
       _items.add({
+        'ItemNo': nextNo.toString().padLeft(6, '0'),
         'MaterialID': '',
         'Quantity': '1',
         'Plant': '1000',
-        'ItemNo': nextNo.toString().padLeft(6, '0'),
+        'BaseUnit': 'PC',
       });
     });
   }
@@ -62,25 +66,39 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     }
   }
 
-  // Trong file lib/screen/create_so.dart
+  Future<void> _openMaterialPicker(int index) async {
+    final selected = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MaterialListScreen(isPicker: true),
+      ),
+    );
+
+    if (selected != null && selected is MaterialModel) {
+      setState(() {
+        _items[index]['MaterialID'] = selected.materialID;
+        _items[index]['BaseUnit'] = selected.baseUnit;
+
+        // FIX LỖI 2: Reset kho dòng này khi đổi vật tư
+        _selectedStocks[index] = null;
+      });
+    }
+  }
 
   Future<void> _submitOrder() async {
-    if (_customerController.text.isEmpty) return;
-
-    // Kiểm tra trước: Update Stock bắt buộc phải có Storageloc từ dữ liệu Stock đã load
+    if (_customerController.text.isEmpty) {
+      _showErrorSnackBar("Vui lòng nhập mã khách hàng");
+      return;
+    }
     for (var item in _items) {
-      if (item['Storageloc'] == null || item['Storageloc'].isEmpty) {
-        _showErrorSnackBar(
-          "Vật tư ${item['MaterialID']} chưa chọn kho xuất (Storage Location)",
-        );
+      if (item['MaterialID'].isEmpty) {
+        _showErrorSnackBar("Dòng ${item['ItemNo']} chưa chọn vật tư");
         return;
       }
     }
 
     setState(() => _isSending = true);
 
-    // 1. PAYLOAD CHO SALES ORDER: Không bao gồm Storageloc và BaseUnit
-    // Để tránh lỗi "Property invalid"
     Map<String, dynamic> soPayload = {
       "Doctype": _docTypeController.text,
       "Customerid": _customerController.text,
@@ -100,30 +118,62 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     };
 
     try {
-      // 2. TẠO SALES ORDER TRƯỚC
-      // ODataService sẽ fetch CSRF Token và Cookie tự động
       final result = await _service.createSalesOrder(soPayload);
-      String orderId = result['Orderid'] ?? "Thành công";
-
-      // 3. CẬP NHẬT KHO: Lúc này mới dùng Storageloc và BaseUnit
-      // Duyệt danh sách _items gốc (nơi chứa dữ liệu kho bạn đã chọn)
-      for (var item in _items) {
-        await _service.updateStock(
-          matnr: item['MaterialID'],
-          werks: item['Plant'],
-          lgort: item['Storageloc'], // Lấy từ Stock
-          qty: item['Quantity'],
-          meins: item['BaseUnit'] ?? 'PC',
-        );
-      }
-
-      _showSuccessDialog(orderId);
+      String orderId = result['Orderid'] ?? "N/A";
+      _showSuccessAndNavigate(orderId);
     } catch (e) {
-      // Xử lý các lỗi như Material không thuộc Sales Org
       _showErrorSnackBar("Lỗi SAP: $e");
     } finally {
       setState(() => _isSending = false);
     }
+  }
+
+  void _showSuccessAndNavigate(String orderId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Icon(Icons.check_circle, color: Colors.green, size: 60),
+        content: Text(
+          "Sales Order $orderId đã tạo thành công!",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        GoodsIssueScreen(orderId: orderId, items: _items),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                child: Text(
+                  "XÁC NHẬN XUẤT KHO (GI)",
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -152,7 +202,11 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                     ),
                     TextButton.icon(
                       onPressed: _addItem,
-                      icon: Icon(Icons.add_circle_outline, color: accentGreen),
+                      icon: Icon(
+                        Icons.add_circle_outline,
+                        color: accentGreen,
+                        size: 20,
+                      ),
                       label: Text(
                         "Thêm dòng",
                         style: TextStyle(
@@ -179,6 +233,8 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     );
   }
 
+  // --- TRẢ LẠI TOÀN BỘ UI COMPONENTS GỐC CỦA BẠN ---
+
   Widget _buildElegantHeader() {
     return Container(
       padding: EdgeInsets.only(
@@ -187,7 +243,16 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         left: 10,
       ),
       width: double.infinity,
-      color: primaryGreen,
+      decoration: BoxDecoration(
+        color: primaryGreen,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           IconButton(
@@ -304,11 +369,28 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
               ),
               SizedBox(width: 12),
               Expanded(
-                child: TextField(
-                  onChanged: (v) => item['MaterialID'] = v,
-                  decoration: InputDecoration(
-                    hintText: "Mã vật tư...",
-                    border: InputBorder.none,
+                child: InkWell(
+                  onTap: () => _openMaterialPicker(index),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[200]!),
+                      ),
+                    ),
+                    child: Text(
+                      item['MaterialID'].isEmpty
+                          ? "Chạm để chọn vật tư..."
+                          : item['MaterialID'],
+                      style: TextStyle(
+                        color: item['MaterialID'].isEmpty
+                            ? Colors.grey
+                            : Colors.black87,
+                        fontWeight: item['MaterialID'].isEmpty
+                            ? FontWeight.normal
+                            : FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -318,17 +400,31 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
               ),
             ],
           ),
+          SizedBox(height: 15),
           Row(
             children: [
               Expanded(
                 child: _buildSmallInput(
                   "Số lượng",
                   (v) => item['Quantity'] = v,
+                  initialValue: item['Quantity'],
                 ),
               ),
               SizedBox(width: 20),
               Expanded(
-                child: _buildSmallInput("Plant", (v) => item['Plant'] = v),
+                child: _buildSmallInput(
+                  "Plant",
+                  (v) => item['Plant'] = v,
+                  initialValue: item['Plant'],
+                ),
+              ),
+              SizedBox(width: 20),
+              Container(
+                padding: EdgeInsets.only(top: 15),
+                child: Text(
+                  item['BaseUnit'] ?? 'PC',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -358,14 +454,23 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     );
   }
 
-  Widget _buildSmallInput(String label, Function(String) onChanged) {
-    return TextField(
+  Widget _buildSmallInput(
+    String label,
+    Function(String) onChanged, {
+    String? initialValue,
+  }) {
+    return TextFormField(
+      initialValue: initialValue,
       onChanged: onChanged,
       keyboardType: TextInputType.number,
+      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(fontSize: 12),
+        labelStyle: TextStyle(fontSize: 12, color: Colors.grey),
         isDense: true,
+        enabledBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.grey[200]!),
+        ),
       ),
     );
   }
@@ -396,11 +501,11 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         onPressed: _isSending ? null : _submitOrder,
         icon: _isSending
             ? SizedBox()
-            : Icon(Icons.cloud_upload_outlined, color: Colors.white),
+            : Icon(Icons.check_circle_outline, color: Colors.white),
         label: _isSending
             ? CircularProgressIndicator(color: Colors.white)
             : Text(
-                "XÁC NHẬN TẠO ĐƠN",
+                "TẠO ĐƠN & TIẾP TỤC",
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -414,30 +519,6 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
           ),
           elevation: 8,
         ),
-      ),
-    );
-  }
-
-  void _showSuccessDialog(String id) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Icon(Icons.check_circle, color: Colors.green, size: 60),
-        content: Text(
-          "Đơn hàng $id đã được tạo!",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            },
-            child: Text("ĐÓNG"),
-          ),
-        ],
       ),
     );
   }

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:sap341/model/Material.dart';
 import 'package:sap341/model/Stock.dart';
@@ -7,14 +6,13 @@ import 'package:sap341/model/Stock.dart';
 class ODataService {
   final String baseUrl =
       "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GR5_SE1877_PRJ_SRV";
-  final String username = "dev-385";
-  final String password = "";
+  final String username = "dev-382";
+  final String password = "ngominhcuong"; // Thay bằng password của bạn
 
-  // Bộ nhớ đệm cho bảo mật
   String? _csrfToken;
   String? _cookie;
 
-  // Header cơ bản kèm Authentication
+  // Header xác thực cơ bản dùng cho các lệnh GET
   Map<String, String> get _authHeader {
     String basicAuth =
         'Basic ' + base64Encode(utf8.encode('$username:$password'));
@@ -23,38 +21,32 @@ class ODataService {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
+      'Accept-Language': 'en',
     };
   }
 
-  // --- HÀM QUAN TRỌNG: Lấy Token và giữ Session ---
+  // --- HÀM LẤY TOKEN & COOKIE (Cần thiết cho POST, PUT, DELETE) ---
   Future<void> _fetchCsrfToken() async {
-    // Gọi một yêu cầu GET nhẹ nhàng để lấy Token
-    final response = await http.get(
-      Uri.parse("$baseUrl/"),
-      headers: {..._authHeader, 'X-CSRF-Token': 'Fetch'},
-    );
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/"),
+        headers: {..._authHeader, 'X-CSRF-Token': 'Fetch'},
+      );
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      _csrfToken = response.headers['x-csrf-token'];
-
-      // Lấy toàn bộ Cookie trả về (SAP có thể trả về nhiều dòng Set-Cookie)
-      _cookie = response.headers['set-cookie'];
-
-      print("DEBUG: Đã lấy Token thành công: $_csrfToken");
-    } else {
-      print("DEBUG: Không lấy được Token. Mã lỗi: ${response.statusCode}");
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _csrfToken = response.headers['x-csrf-token'];
+        _cookie = response.headers['set-cookie'];
+        print("DEBUG: Fetch Token & Cookie thành công");
+      }
+    } catch (e) {
+      print("DEBUG: Lỗi fetch token: $e");
     }
   }
 
   // --- 1. TẠO SALES ORDER (DEEP INSERT) ---
-  // lib/service/ODataService.dart
-
-  // lib/service/ODataService.dart
-
   Future<Map<String, dynamic>> createSalesOrder(
     Map<String, dynamic> payload,
   ) async {
-    // Bước 1: Luôn Fetch token mới nhất ngay trước khi POST
     await _fetchCsrfToken();
 
     final response = await http.post(
@@ -62,117 +54,122 @@ class ODataService {
       headers: {
         ..._authHeader,
         'X-CSRF-Token': _csrfToken ?? '',
-        'Cookie': _cookie ?? '', // Bắt buộc phải có Cookie đi kèm Token
+        if (_cookie != null) 'Cookie': _cookie!,
       },
       body: jsonEncode(payload),
     );
 
     if (response.statusCode == 201) {
-      final responseData = jsonDecode(response.body)['d'];
-
-      // Bước 2: Chỉ trừ kho khi tạo đơn thành công
-      if (payload.containsKey('To_Items')) {
-        List items = payload['To_Items'];
-        for (var item in items) {
-          await updateStock(
-            matnr: item['Materialid'] ?? '',
-            werks: item['Plant'] ?? '',
-            lgort: item['Storageloc'] ?? '',
-            qty: item['Quantity'] ?? '0',
-            // Sử dụng trường tạm từ UI gửi qua để phục vụ updateStock
-            meins: item['_InternalBaseUnit'] ?? 'PC',
-          );
-        }
-      }
-      return responseData;
+      return jsonDecode(response.body)['d'];
     } else {
-      // Trả về lỗi chi tiết từ SAP (như hình 2 bạn gửi)
-      throw Exception(response.body);
+      throw Exception("Lỗi tạo SO: ${response.body}");
     }
   }
 
   // --- 2. LẤY DANH SÁCH VẬT TƯ ---
-  Future<List<MaterialModel>> fetchMaterials() async {
+  Future<List<MaterialModel>> fetchMaterials({String? plant}) async {
     String url = "$baseUrl/MaterialSet?\$format=json";
 
-    final response = await http.get(Uri.parse(url), headers: _authHeader);
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final List results = data['d']['results'] ?? [];
-      return results.map((json) => MaterialModel.fromJson(json)).toList();
-    } else {
-      throw Exception('Lỗi lấy vật tư: ${response.statusCode}');
+    // Thêm filter nếu có chọn nhà máy
+    if (plant != null && plant.isNotEmpty && plant != 'Tất cả') {
+      url += "&\$filter=WERKS_D eq '$plant'";
     }
-  }
-
-  // --- 3. KIỂM TRA TỒN KHO ---
-  Future<List<StockModel>> fetchStocks({String? materialID}) async {
-    List<String> queryParams = ["\$format=json"];
-
-    if (materialID != null && materialID.trim().isNotEmpty) {
-      queryParams.add("\$filter=Materialid eq '${materialID.trim()}'");
-    }
-
-    String fullUrl = "$baseUrl/StockSet?" + queryParams.join("&");
 
     try {
-      final response = await http.get(Uri.parse(fullUrl), headers: _authHeader);
+      final response = await http.get(Uri.parse(url), headers: _authHeader);
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final List results = data['d']['results'] ?? [];
-        return results.map((json) => StockModel.fromJson(json)).toList();
+        final List results = data['d']?['results'] ?? [];
+        return results.map((json) => MaterialModel.fromJson(json)).toList();
       } else {
-        return [];
+        throw Exception('Lỗi lấy vật tư: ${response.statusCode}');
       }
     } catch (e) {
+      print("Error fetching materials: $e");
       return [];
     }
   }
 
-  // --- 4. CẬP NHẬT TỒN KHO (PUT) ---
-  // lib/services/odata_service.dart
-
-  // --- 4. CẬP NHẬT TỒN KHO (Kích hoạt BAPI_GOODSMVT_CREATE ở Backend) ---
-  Future<bool> updateStock({
-    required String matnr,
-    required String werks,
-    required String lgort,
-    required String qty,
-    required String meins,
+  // --- 3. LẤY TỒN KHO (Hỗ trợ cả lấy TOÀN BỘ hoặc LỌC) ---
+  // Để lấy toàn bộ, chỉ cần gọi: fetchStocks()
+  // Để lọc vật tư, gọi: fetchStocks(materialID: 'MATE_01')
+  Future<List<StockModel>> fetchStocks({
+    String? materialID,
+    String? plant,
   }) async {
+    List<String> filters = [];
+
+    // Lọc theo MaterialID (nếu có)
+    if (materialID != null && materialID.trim().isNotEmpty) {
+      String formattedID = materialID.trim();
+      // Nếu là số thì thêm số 0 ở đầu cho chuẩn SAP (18 ký tự)
+      if (RegExp(r'^[0-9]+$').hasMatch(formattedID)) {
+        formattedID = formattedID.padLeft(18, '0');
+      }
+      filters.add("Materialid eq '$formattedID'");
+    }
+
+    // Lọc theo Plant (nếu có)
+    if (plant != null && plant.isNotEmpty && plant != 'Tất cả') {
+      filters.add("Plant eq '$plant'");
+    }
+
+    // Xây dựng Query String
+    String filterQuery = "";
+    if (filters.isNotEmpty) {
+      filterQuery = "&\$filter=" + filters.join(" and ");
+    }
+
+    final String url = "$baseUrl/StockSet?\$format=json$filterQuery";
+
+    try {
+      print("DEBUG URL Stock: $url");
+      final response = await http.get(Uri.parse(url), headers: _authHeader);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List results = data['d']?['results'] ?? [];
+        return results.map((json) => StockModel.fromJson(json)).toList();
+      } else {
+        print("SAP Error: ${response.statusCode} - ${response.body}");
+        return [];
+      }
+    } catch (e) {
+      print("Connection Error: $e");
+      return [];
+    }
+  }
+
+  // --- 4. CẬP NHẬT TỒN KHO ---
+  Future<void> updateStock(Map<String, dynamic> data) async {
     await _fetchCsrfToken();
 
-    // Lưu ý: Đảm bảo Materialid, Plant, Storageloc viết HOA/thường đúng như trong SEGW
-    String url =
-        "$baseUrl/StockUpdateSet(Materialid='$matnr',Plant='$werks',Storageloc='$lgort')";
+    // Key OData: Materialid, Plant, Storageloc
+    final String matId = data['Materialid'];
+    final String plant = data['Plant'];
+    final String sloc = data['Storageloc'];
+
+    // Encode URL để tránh lỗi ký tự đặc biệt trong Key
+    final String resourcePath =
+        "StockUpdateSet(Materialid='$matId',Plant='$plant',Storageloc='$sloc')";
+    final url = Uri.parse("$baseUrl/$resourcePath");
 
     final response = await http.put(
-      Uri.parse(url),
+      url,
       headers: {
         ..._authHeader,
         'X-CSRF-Token': _csrfToken ?? '',
-        'Cookie': _cookie ?? '',
+        if (_cookie != null) 'Cookie': _cookie!,
       },
-      body: jsonEncode({
-        "Materialid": matnr,
-        "Plant": werks,
-        "Storageloc": lgort,
-        "Quantity": qty, // Đảm bảo Backend nhận được chuỗi số (Vd: "10.000")
-        "Movetype": "551",
-        "Baseunit": meins, // Backend của bạn dùng ls_request-baseunit
-      }),
+      body: jsonEncode(data),
     );
 
-    // QUAN TRỌNG: Kiểm tra xem SAP trả về cái gì
-    print("DEBUG STATUS: ${response.statusCode}");
-    print("DEBUG BODY: ${response.body}");
-
     if (response.statusCode != 204 && response.statusCode != 200) {
-      // Nếu lỗi, in ra để debug
-      print("Lỗi trừ kho từ SAP: ${response.body}");
+      throw Exception(
+        "Lỗi cập nhật SAP (${response.statusCode}): ${response.body}",
+      );
     }
-
-    return response.statusCode == 204 || response.statusCode == 200;
+    print("DEBUG: Cập nhật tồn kho thành công!");
   }
 }

@@ -1,46 +1,62 @@
 // lib/models/sales_order_model.dart
 
 class SalesOrderHeader {
-  final String doctype; // ls_deep_entity-doctype
-  final String salesorg; // ls_deep_entity-salesorg
-  final String distchannel; // ls_deep_entity-distchannel
-  final String division; // ls_deep_entity-division
-  final String customerid; // ls_deep_entity-customerid
+  final String orderId; // Để hứng mã SO trả về từ SAP
+  final String doctype;
+  final String salesorg;
+  final String distchannel;
+  final String division;
+  final String customerid;
   final List<SalesOrderItem> toItems;
 
   SalesOrderHeader({
+    this.orderId = '',
     this.doctype = 'OR',
-    this.salesorg = '1000',
-    this.distchannel = '10',
-    this.division = '00',
+    this.salesorg = 'UE00',
+    this.distchannel = 'WH',
+    this.division = 'AS',
     required this.customerid,
     required this.toItems,
   });
 
   Map<String, dynamic> toJson() {
     return {
+      'Orderid': orderId, // Thêm field này để SAP có chỗ trả về ID
       'Doctype': doctype,
       'Salesorg': salesorg,
       'Distchannel': distchannel,
       'Division': division,
       'Customerid': customerid,
-      // Tên 'To_Items' phải khớp chính xác với Navigation Property trong SEGW
       'To_Items': toItems.map((i) => i.toJson()).toList(),
     };
+  }
+
+  // Hứng kết quả trả về sau khi POST thành công
+  factory SalesOrderHeader.fromJson(Map<String, dynamic> json) {
+    var list = json['To_Items'] as List? ?? [];
+    return SalesOrderHeader(
+      orderId: json['Orderid'] ?? '',
+      doctype: json['Doctype'] ?? '',
+      salesorg: json['Salesorg'] ?? '',
+      customerid: json['Customerid'] ?? '',
+      toItems: list.map((i) => SalesOrderItem.fromJson(i)).toList(),
+    );
   }
 }
 
 class SalesOrderItem {
-  final String itemno; // ls_item-itemno (Vd: '000010')
-  final String materialid; // ls_item-materialid
-  final String plant; // ls_item-plant
-  final double quantity; // ls_item-quantity
+  final String itemno;
+  final String materialid;
+  final String plant;
+  final String quantity; // Để String cho an toàn với ABAP
+  final String baseUnit; // Thêm để dùng cho bước Goods Issue
 
   SalesOrderItem({
     required this.itemno,
     required this.materialid,
     this.plant = '1000',
     required this.quantity,
+    this.baseUnit = 'PC',
   });
 
   Map<String, dynamic> toJson() {
@@ -48,7 +64,17 @@ class SalesOrderItem {
       'Itemno': itemno,
       'Materialid': materialid,
       'Plant': plant,
-      'Quantity': quantity.toString(), // Truyền dạng String để ABAP dễ convert
+      'Quantity': quantity,
     };
+  }
+
+  factory SalesOrderItem.fromJson(Map<String, dynamic> json) {
+    return SalesOrderItem(
+      itemno: json['Itemno'] ?? '',
+      materialid: json['Materialid'] ?? '',
+      plant: json['Plant'] ?? '',
+      quantity: json['Quantity']?.toString() ?? '0',
+      baseUnit: json['Meins'] ?? 'PC', // Nếu SAP trả về đơn vị tính
+    );
   }
 }
