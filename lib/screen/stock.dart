@@ -435,11 +435,14 @@ class _StockScreenState extends State<StockScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _infoRow(
-                          Icons.qr_code_2_rounded,
-                          "Mã VT",
-                          stock.materialID.replaceFirst(RegExp(r'^0+'), ''),
+                        Expanded(
+                          child: _infoRow(
+                            Icons.qr_code_2_rounded,
+                            "Mã VT",
+                            stock.materialID.replaceFirst(RegExp(r'^0+'), ''),
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         _buildStatusTag(isLow, statusColor),
                       ],
                     ),
@@ -447,12 +450,21 @@ class _StockScreenState extends State<StockScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _infoRow(
-                          Icons.warehouse_rounded,
-                          "Kho",
-                          stock.storageLocation,
+                        Expanded(
+                          child: _infoRow(
+                            Icons.warehouse_rounded,
+                            "Kho",
+                            stock.storageLocation,
+                          ),
                         ),
-                        _infoRow(Icons.factory_outlined, "Plant", stock.plant),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _infoRow(
+                            Icons.factory_outlined,
+                            "Plant",
+                            stock.plant,
+                          ),
+                        ),
                       ],
                     ),
                     const Divider(height: 25, color: Color(0xFFF0F0F0)),
@@ -505,16 +517,23 @@ class _StockScreenState extends State<StockScreen> {
       children: [
         Icon(icon, size: 14, color: accentGreen.withOpacity(0.5)),
         const SizedBox(width: 5),
-        Text(
-          "$label: ",
-          style: TextStyle(color: Colors.grey[500], fontSize: 11),
+        Flexible(
+          child: Text(
+            "$label: ",
+            style: TextStyle(color: Colors.grey[500], fontSize: 11),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 11,
-            color: Color(0xFF2E3D31),
+        Flexible(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+              color: Color(0xFF2E3D31),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -544,27 +563,34 @@ class _StockScreenState extends State<StockScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       color: Colors.white,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _pageIconBtn(Icons.first_page, () => _goToPage(1), _currentPage > 1),
-          _pageIconBtn(
-            Icons.chevron_left,
-            () => _goToPage(_currentPage - 1),
-            _currentPage > 1,
-          ),
-          ..._generateVisiblePages(totalPages).map((p) => _pageNumberBtn(p)),
-          _pageIconBtn(
-            Icons.chevron_right,
-            () => _goToPage(_currentPage + 1),
-            _currentPage < totalPages,
-          ),
-          _pageIconBtn(
-            Icons.last_page,
-            () => _goToPage(totalPages),
-            _currentPage < totalPages,
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _pageIconBtn(
+              Icons.first_page,
+              () => _goToPage(1),
+              _currentPage > 1,
+            ),
+            _pageIconBtn(
+              Icons.chevron_left,
+              () => _goToPage(_currentPage - 1),
+              _currentPage > 1,
+            ),
+            ..._generateVisiblePages(totalPages).map((p) => _pageNumberBtn(p)),
+            _pageIconBtn(
+              Icons.chevron_right,
+              () => _goToPage(_currentPage + 1),
+              _currentPage < totalPages,
+            ),
+            _pageIconBtn(
+              Icons.last_page,
+              () => _goToPage(totalPages),
+              _currentPage < totalPages,
+            ),
+          ],
+        ),
       ),
     );
   }

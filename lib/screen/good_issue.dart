@@ -17,11 +17,28 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
   final ODataService _service = ODataService();
   bool _isProcessing = false;
 
-  // Quản lý kho đã chọn theo chỉ mục dòng (index)
-  Map<int, StockModel?> _selectedStocks = {};
+  // Người dùng chỉ nhập thêm Movetype + Storageloc cho từng item
+  final Map<int, TextEditingController> _moveTypeControllers = {};
+  final Map<int, String?> _selectedStorageLocs = {};
 
   final Color primaryGreen = Color(0xFF1B5E20);
   final Color accentGreen = Color(0xFF2E7D32);
+
+  @override
+  void initState() {
+    super.initState();
+    for (int i = 0; i < widget.items.length; i++) {
+      _moveTypeControllers[i] = TextEditingController(text: '601');
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _moveTypeControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +64,6 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
     );
   }
 
-  // ... (Các widget _buildOrderSummary giữ nguyên như code của bạn)
   Widget _buildOrderSummary() {
     return Container(
       padding: EdgeInsets.all(20),
@@ -66,7 +82,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           ),
           SizedBox(height: 5),
           Text(
-            "Vui lòng chọn kho xuất cho từng vật tư bên dưới",
+            "Điền Movetype và chọn Storageloc cho từng vật tư",
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
@@ -80,7 +96,6 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
       itemCount: widget.items.length,
       itemBuilder: (context, index) {
         final item = widget.items[index];
-        final selectedStock = _selectedStocks[index];
 
         return Card(
           margin: EdgeInsets.only(bottom: 15),
@@ -104,30 +119,13 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
                 child: Column(
                   children: [
                     Divider(),
-                    _buildStockPicker(index, item['MaterialID'], item['Plant']),
-                    if (selectedStock != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Tồn kho hiện tại:",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            Text(
-                              "${selectedStock.availableQty} ${selectedStock.baseUnit}",
-                              style: TextStyle(
-                                color: accentGreen,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    _buildMoveTypeField(index),
+                    SizedBox(height: 10),
+                    _buildStorageLocPicker(
+                      index,
+                      item['MaterialID']?.toString() ?? '',
+                      item['Plant']?.toString() ?? '',
+                    ),
                   ],
                 ),
               ),
@@ -138,41 +136,63 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
     );
   }
 
-  Widget _buildStockPicker(int index, String matId, String plant) {
+  Widget _buildMoveTypeField(int index) {
+    return TextField(
+      controller: _moveTypeControllers[index],
+      decoration: InputDecoration(
+        labelText: "Movement Type",
+        hintText: "Ví dụ: 601, 201, 551",
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Widget _buildStorageLocPicker(int index, String matId, String plant) {
     return FutureBuilder<List<StockModel>>(
       key: ValueKey('picker_${matId}_$index'),
       future: _service.fetchStocks(materialID: matId, plant: plant),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return LinearProgressIndicator();
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return LinearProgressIndicator();
+        }
 
-        List<StockModel> allStocks = snapshot.data!;
+        List<StockModel> allStocks = snapshot.data ?? [];
         List<StockModel> filteredStocks = allStocks
             .where((s) => s.materialID == matId)
             .toList();
 
         if (filteredStocks.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              "Không có kho cho vật tư này",
-              style: TextStyle(color: Colors.red, fontSize: 12),
-            ),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  "Không lấy được danh sách kho. Bạn có thể nhập Storageloc thủ công.",
+                  style: TextStyle(color: Colors.orange[800], fontSize: 12),
+                ),
+              ),
+              TextField(
+                decoration: InputDecoration(
+                  labelText: "Storageloc",
+                  hintText: "Nhập mã kho, ví dụ: 0001",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    _selectedStorageLocs[index] = val.trim();
+                  });
+                },
+              ),
+            ],
           );
         }
 
-        StockModel? currentValue;
-        if (_selectedStocks[index] != null) {
-          try {
-            currentValue = filteredStocks.firstWhere(
-              (s) =>
-                  s.storageLocation == _selectedStocks[index]!.storageLocation,
-            );
-          } catch (e) {
-            currentValue = null;
-          }
-        }
+        final String? currentValue = _selectedStorageLocs[index];
 
-        return DropdownButtonFormField<StockModel>(
+        return DropdownButtonFormField<String>(
           isExpanded: true,
           decoration: InputDecoration(
             labelText: "Chọn kho xuất cho $matId",
@@ -181,7 +201,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           value: currentValue,
           items: filteredStocks.map((stock) {
             return DropdownMenuItem(
-              value: stock,
+              value: stock.storageLocation,
               child: Text(
                 "Kho: ${stock.storageLocation} (Tồn: ${stock.availableQty})",
               ),
@@ -189,7 +209,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           }).toList(),
           onChanged: (val) {
             setState(() {
-              _selectedStocks[index] = val;
+              _selectedStorageLocs[index] = val;
             });
           },
         );
@@ -226,55 +246,51 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
     );
   }
 
-  // --- PHẦN LOGIC QUAN TRỌNG NHẤT: TRỪ TỒN THẬT ---
   Future<void> _confirmGoodsIssue() async {
-    // 1. Kiểm tra xem tất cả các dòng đã chọn kho chưa
-    if (_selectedStocks.values.where((v) => v != null).length <
-        widget.items.length) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Vui lòng chọn đầy đủ kho cho các vật tư"),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
+    for (int i = 0; i < widget.items.length; i++) {
+      final String moveType = _moveTypeControllers[i]?.text.trim() ?? '';
+      final String storageLoc = _selectedStorageLocs[i]?.trim() ?? '';
+      if (moveType.isEmpty || storageLoc.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Vui lòng điền Movetype và Storageloc cho tất cả vật tư",
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isProcessing = true);
 
     try {
-      // 2. Chạy vòng lặp để gọi PUT request cho từng Item (vì update_entity xử lý từng entry)
-      for (int i = 0; i < widget.items.length; i++) {
-        final item = widget.items[i];
-        final stock = _selectedStocks[i]!;
-
-        // Payload phải khớp hoàn toàn với cấu trúc zst_382_stockupdate trong ABAP của bạn
-        Map<String, dynamic> updatePayload = {
-          "Materialid": item['MaterialID'],
-          "Plant": item['Plant'],
-          "Storageloc": stock.storageLocation, // ls_item-stge_loc
-          "Movetype":
-              "551", // Hoặc mã move type bạn quy định (thường là 201 hoặc 601)
-          "Quantity": item['Quantity'].toString(),
-          "Baseunit": item['BaseUnit'],
-        };
-
-        // GỌI API THỰC TẾ (Sử dụng phương thức UPDATE/PUT)
-        // Lưu ý: Endpoint thường có dạng StockUpdateSet(Materialid='...', Plant='...', ...)
-        // tùy theo cách bạn định nghĩa Key trong SEGW.
-        await _service.updateStock(updatePayload);
-      }
-
-      // 3. Cập nhật UI trừ tồn "ảo" để người dùng thấy số thay đổi ngay lập tức
-      setState(() {
-        for (int i = 0; i < widget.items.length; i++) {
+      final List<Map<String, dynamic>> giItems = List.generate(
+        widget.items.length,
+        (i) {
           final item = widget.items[i];
-          final qty = double.tryParse(item['Quantity'].toString()) ?? 0;
-          _selectedStocks[i]?.availableQty -= qty;
-        }
-      });
+          return {
+            "Orderid": widget.orderId,
+            "Itemno": item['ItemNo']?.toString() ?? '',
+            "Materialid": item['MaterialID']?.toString() ?? '',
+            "Plant": item['Plant']?.toString() ?? '',
+            "Storageloc": _selectedStorageLocs[i] ?? '',
+            "Movetype": _moveTypeControllers[i]?.text.trim() ?? '',
+            "Quantity": item['Quantity']?.toString() ?? '0',
+            "Baseunit": item['BaseUnit']?.toString() ?? '',
+          };
+        },
+      );
 
-      _showFinalSuccess();
+      final Map<String, dynamic> giPayload = _service.buildGoodsIssuePayload(
+        orderId: widget.orderId,
+        items: giItems,
+      );
+
+      final giResult = await _service.createGoodsIssue(giPayload);
+      final String matDoc = giResult['Matdoc']?.toString() ?? '';
+      _showFinalSuccess(matDoc: matDoc);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Lỗi SAP: $e"), backgroundColor: Colors.red),
@@ -284,7 +300,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
     }
   }
 
-  void _showFinalSuccess() {
+  void _showFinalSuccess({required String matDoc}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -298,7 +314,9 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           ],
         ),
         content: Text(
-          "Hệ thống đã thực hiện Goods Issue và cập nhật số dư kho SAP thực tế.",
+          matDoc.isEmpty
+              ? "Post Goods Issue thành công."
+              : "Post Goods Issue thành công. Material Document: $matDoc",
         ),
         actions: [
           TextButton(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sap341/screen/material_list.dart';
 import 'package:sap341/screen/stock.dart';
 import 'package:sap341/screen/create_so.dart';
+import 'package:sap341/screen/sales_order_list.dart';
 
 class MainMenuScreen extends StatelessWidget {
   final Color primaryGreen = Color.fromRGBO(27, 94, 32, 1);
@@ -10,47 +11,61 @@ class MainMenuScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final bool isNarrow = size.width < 700;
+
     return Scaffold(
       backgroundColor: backgroundLight,
       body: Column(
         children: [
           _buildSystemHeader(context),
           Expanded(
-            child: GridView.count(
-              padding: EdgeInsets.symmetric(horizontal: 25, vertical: 30),
-              crossAxisCount: 2,
-              crossAxisSpacing: 20,
-              mainAxisSpacing: 20,
-              children: [
-                _buildMenuItem(
+            child: GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: isNarrow ? 2 : 3,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: isNarrow ? 0.86 : 1.05,
+              ),
+              itemCount: 4,
+              itemBuilder: (context, index) {
+                final items = [
+                  [
+                    'View Material',
+                    'Tra cứu danh mục vật tư',
+                    Icons.inventory_2_outlined,
+                    MaterialListScreen(),
+                  ],
+                  [
+                    'View Stock',
+                    'Kiểm tra số lượng tồn kho',
+                    Icons.warehouse_outlined,
+                    StockScreen(),
+                  ],
+                  [
+                    'Create Sales Order',
+                    'Tạo đơn hàng mới',
+                    Icons.add_shopping_cart_rounded,
+                    CreateSOScreen(),
+                  ],
+                  [
+                    'View Sales Order',
+                    'Xem đơn hàng đã tạo',
+                    Icons.insert_chart_outlined_rounded,
+                    SalesOrderListScreen(),
+                  ],
+                ];
+
+                final item = items[index];
+                return _buildMenuItem(
                   context,
-                  'View Material',
-                  'Tra cứu danh mục vật tư',
-                  Icons.inventory_2_outlined,
-                  MaterialListScreen(),
-                ),
-                _buildMenuItem(
-                  context,
-                  'View Stock',
-                  'Kiểm tra số lượng tồn kho',
-                  Icons.warehouse_outlined,
-                  StockScreen(),
-                ),
-                _buildMenuItem(
-                  context,
-                  'Create Sales Order',
-                  'Tạo đơn hàng mới',
-                  Icons.add_shopping_cart_rounded,
-                  CreateSOScreen(),
-                ),
-                _buildMenuItem(
-                  context,
-                  'View Sales Order',
-                  'Xem đơn hàng đã tạo',
-                  Icons.insert_chart_outlined_rounded,
-                  null,
-                ),
-              ],
+                  item[0] as String,
+                  item[1] as String,
+                  item[2] as IconData,
+                  item[3] as Widget,
+                );
+              },
             ),
           ),
         ],
@@ -85,9 +100,9 @@ class MainMenuScreen extends StatelessWidget {
             "HỆ THỐNG BÁN HÀNG VÀ\nQUẢN LÝ TỒN KHO SAP",
             style: TextStyle(
               color: Colors.white,
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.5,
+              letterSpacing: 1.2,
               height: 1.3,
             ),
           ),
@@ -138,25 +153,29 @@ class MainMenuScreen extends StatelessWidget {
             }
           },
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 36, color: primaryGreen),
-                Spacer(),
+                Icon(icon, size: 30, color: primaryGreen),
+                const SizedBox(height: 10),
                 Text(
                   title,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 15,
                     color: Color(0xFF121212),
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 SizedBox(height: 4),
                 Text(
                   subtitle,
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),

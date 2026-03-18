@@ -167,12 +167,16 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
                 ),
                 onPressed: () => Navigator.pop(context),
               ),
-              Text(
-                widget.isPicker ? "Chọn Vật Tư" : "Kho Vật Tư SAP",
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              Expanded(
+                child: Text(
+                  widget.isPicker ? "Chọn Vật Tư" : "Kho Vật Tư SAP",
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -362,11 +366,16 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
               // Nếu là chế độ chọn vật tư (cho đơn hàng), trả về item
               Navigator.pop(context, item);
             } else {
-              // Nếu không phải Picker, có thể không làm gì hoặc mở trang Stock tổng
-              // Không truyền materialID vào nữa để StockScreen tự load ALL
+              // Mở tồn kho theo đúng vật tư được chọn.
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const StockScreen()),
+                MaterialPageRoute(
+                  builder: (context) => StockScreen(
+                    materialID: item.materialID,
+                    materialName: item.materialName,
+                    plant: item.plant,
+                  ),
+                ),
               );
             }
           },
@@ -390,7 +399,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    _buildTag(item.materialType ?? "N/A", accentGreen),
+                    _buildTag(item.materialType, accentGreen),
                   ],
                 ),
                 const SizedBox(height: 15),
@@ -472,51 +481,46 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
   // --- UI: PHÂN TRANG SLIDING << < 1 2 3 4 5 > >> ---
   Widget _buildSlidingPagination(int totalPages) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _pageIconBtn(Icons.first_page, () => _goToPage(1), _currentPage > 1),
-          _pageIconBtn(
-            Icons.chevron_left,
-            () => _goToPage(_currentPage - 1),
-            _currentPage > 1,
-          ),
-          ..._generateVisiblePages(totalPages).map((p) => _pageNumberBtn(p)),
-          _pageIconBtn(
-            Icons.chevron_right,
-            () => _goToPage(_currentPage + 1),
-            _currentPage < totalPages,
-          ),
-          _pageIconBtn(
-            Icons.last_page,
-            () => _goToPage(totalPages),
-            _currentPage < totalPages,
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: Colors.white,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _pageIconBtn(
+              Icons.first_page,
+              () => _goToPage(1),
+              _currentPage > 1,
+            ),
+            _pageIconBtn(
+              Icons.chevron_left,
+              () => _goToPage(_currentPage - 1),
+              _currentPage > 1,
+            ),
+            ..._generateVisiblePages(totalPages).map((p) => _pageNumberBtn(p)),
+            _pageIconBtn(
+              Icons.chevron_right,
+              () => _goToPage(_currentPage + 1),
+              _currentPage < totalPages,
+            ),
+            _pageIconBtn(
+              Icons.last_page,
+              () => _goToPage(totalPages),
+              _currentPage < totalPages,
+            ),
+          ],
+        ),
       ),
     );
   }
 
   List<int> _generateVisiblePages(int totalPages) {
-    int start = _currentPage - 2;
-    int end = _currentPage + 2;
-    if (start < 1) {
-      end = (end + (1 - start)).clamp(1, totalPages);
-      start = 1;
-    }
-    if (end > totalPages) {
-      start = (start - (end - totalPages)).clamp(1, totalPages);
-      end = totalPages;
-    }
+    int start = (_currentPage - 1).clamp(1, totalPages);
+    int end = (start + 2).clamp(1, totalPages);
+    if (end - start < 2) start = (end - 2).clamp(1, totalPages);
     List<int> pages = [];
-    for (int i = start; i <= end; i++) {
-      pages.add(i);
-    }
+    for (int i = start; i <= end; i++) pages.add(i);
     return pages;
   }
 
@@ -524,14 +528,13 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
     bool isSelected = _currentPage == page;
     return GestureDetector(
       onTap: () => _goToPage(page),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        width: 38,
-        height: 38,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           color: isSelected ? accentGreen : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(
             color: isSelected ? accentGreen : Colors.grey.shade300,
           ),
@@ -542,6 +545,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
           style: TextStyle(
             color: isSelected ? Colors.white : Colors.black87,
             fontWeight: FontWeight.bold,
+            fontSize: 11,
           ),
         ),
       ),
@@ -553,10 +557,9 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
       icon: Icon(
         icon,
         color: enabled ? accentGreen : Colors.grey.shade300,
-        size: 24,
+        size: 20,
       ),
       onPressed: enabled ? onTap : null,
-      splashRadius: 20,
     );
   }
 

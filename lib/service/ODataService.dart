@@ -9,6 +9,13 @@ class ODataService {
   final String username = "dev-382";
   final String password = "ngominhcuong"; // Thay bằng password của bạn
 
+  // Cấu hình theo SEGW cho luồng Goods Issue deep insert.
+  // Nếu backend đổi tên, chỉ sửa các hằng số này.
+  static const String goodsIssueEntitySet = 'StockUpdateSet';
+  static const String goodsIssueItemsNavProperty = 'To_Items';
+  static const String salesOrderEntitySet = 'SalesOrderHeaderSet';
+  static const String salesOrderItemsNavProperty = 'To_Items';
+
   String? _csrfToken;
   String? _cookie;
 
@@ -64,6 +71,55 @@ class ODataService {
     } else {
       throw Exception("Lỗi tạo SO: ${response.body}");
     }
+  }
+
+  // --- 1B. XEM SALES ORDER (EXPANDED ENTITYSET) ---
+  Future<List<Map<String, dynamic>>> fetchSalesOrders({int top = 50}) async {
+    final String query =
+        '$baseUrl/$salesOrderEntitySet?\$format=json&\$expand=$salesOrderItemsNavProperty&\$top=$top';
+
+    final response = await http.get(Uri.parse(query), headers: _authHeader);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Lỗi lấy Sales Order (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final List<dynamic> results = data['d']?['results'] ?? <dynamic>[];
+
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map(_normalizeSalesOrderHeader)
+        .toList();
+  }
+
+  Map<String, dynamic> _normalizeSalesOrderHeader(Map<String, dynamic> raw) {
+    final Map<String, dynamic> header = Map<String, dynamic>.from(raw);
+    final dynamic itemsContainer =
+        header[salesOrderItemsNavProperty] ??
+        header['To_Items'] ??
+        header['to_Items'] ??
+        header['TO_ITEMS'];
+
+    List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
+
+    if (itemsContainer is Map<String, dynamic>) {
+      final List<dynamic> rawItems = itemsContainer['results'] ?? <dynamic>[];
+      items = rawItems
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } else if (itemsContainer is List) {
+      items = itemsContainer
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+
+    header[salesOrderItemsNavProperty] = items;
+    return header;
   }
 
   // --- 2. LẤY DANH SÁCH VẬT TƯ ---
@@ -142,15 +198,52 @@ class ODataService {
   }
 
   // --- 4. CẬP NHẬT TỒN KHO ---
+  // Deep insert Goods Issue theo Entity Set header trong SEGW (ví dụ: StockUpdateSet)
+  Map<String, dynamic> buildGoodsIssuePayload({
+    required String orderId,
+    required List<Map<String, dynamic>> items,
+  }) {
+    return {'Orderid': orderId, goodsIssueItemsNavProperty: items};
+  }
+
+  Future<Map<String, dynamic>> createGoodsIssue(
+    Map<String, dynamic> payload,
+  ) async {
+    await _fetchCsrfToken();
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/$goodsIssueEntitySet'),
+      headers: {
+        ..._authHeader,
+        'X-CSRF-Token': _csrfToken ?? '',
+        if (_cookie != null) 'Cookie': _cookie!,
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final body = response.body.isNotEmpty
+          ? jsonDecode(response.body) as Map<String, dynamic>
+          : <String, dynamic>{};
+      return body['d'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    }
+
+    if (response.statusCode == 500 && response.body.contains('innererror')) {
+      throw Exception("Lỗi backend GI: ${response.body}");
+    }
+
+    throw Exception(
+      "Lỗi tạo Goods Issue (${response.statusCode}): ${response.body}",
+    );
+  }
+
+  // Giữ hàm cũ để tương thích nếu màn khác còn dùng PUT từng dòng.
   Future<void> updateStock(Map<String, dynamic> data) async {
     await _fetchCsrfToken();
 
-    // Key OData: Materialid, Plant, Storageloc
     final String matId = data['Materialid'];
     final String plant = data['Plant'];
     final String sloc = data['Storageloc'];
-
-    // Encode URL để tránh lỗi ký tự đặc biệt trong Key
     final String resourcePath =
         "StockUpdateSet(Materialid='$matId',Plant='$plant',Storageloc='$sloc')";
     final url = Uri.parse("$baseUrl/$resourcePath");

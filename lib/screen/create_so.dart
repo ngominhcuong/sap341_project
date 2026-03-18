@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:sap341/service/ODataService.dart';
 import 'package:sap341/model/Material.dart';
 import 'package:sap341/screen/material_list.dart';
 import 'package:sap341/screen/good_issue.dart';
 import 'package:sap341/model/Stock.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CreateSOScreen extends StatefulWidget {
   @override
@@ -11,8 +14,12 @@ class CreateSOScreen extends StatefulWidget {
 }
 
 class _CreateSOScreenState extends State<CreateSOScreen> {
+  static const String _draftKey = 'create_so_draft_v1';
+
   final ODataService _service = ODataService();
   bool _isSending = false;
+  bool _isRestoringDraft = false;
+  DateTime? _lastDraftSavedAt;
 
   // FIX LỖI 1: Khai báo biến quản lý kho đã chọn
   Map<int, StockModel?> _selectedStocks = {};
@@ -47,6 +54,177 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     },
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _registerFormListeners();
+    _restoreDraft();
+  }
+
+  @override
+  void dispose() {
+    _docTypeController.removeListener(_onHeaderFieldChanged);
+    _customerController.removeListener(_onHeaderFieldChanged);
+    _salesOrgController.removeListener(_onHeaderFieldChanged);
+    _distChannelController.removeListener(_onHeaderFieldChanged);
+    _divisionController.removeListener(_onHeaderFieldChanged);
+
+    _docTypeController.dispose();
+    _customerController.dispose();
+    _salesOrgController.dispose();
+    _distChannelController.dispose();
+    _divisionController.dispose();
+    super.dispose();
+  }
+
+  void _registerFormListeners() {
+    _docTypeController.addListener(_onHeaderFieldChanged);
+    _customerController.addListener(_onHeaderFieldChanged);
+    _salesOrgController.addListener(_onHeaderFieldChanged);
+    _distChannelController.addListener(_onHeaderFieldChanged);
+    _divisionController.addListener(_onHeaderFieldChanged);
+  }
+
+  void _onHeaderFieldChanged() {
+    _saveDraft();
+  }
+
+  Future<void> _saveDraft() async {
+    if (_isRestoringDraft) return;
+
+    final now = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    final draft = {
+      'Doctype': _docTypeController.text,
+      'Customerid': _customerController.text,
+      'Salesorg': _salesOrgController.text,
+      'Distchannel': _distChannelController.text,
+      'Division': _divisionController.text,
+      'To_Items': _items,
+      'SavedAt': now.toIso8601String(),
+    };
+
+    await prefs.setString(_draftKey, jsonEncode(draft));
+    if (!mounted) return;
+    setState(() {
+      _lastDraftSavedAt = now;
+    });
+  }
+
+  Future<void> _restoreDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawDraft = prefs.getString(_draftKey);
+
+    if (rawDraft == null || rawDraft.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(rawDraft);
+      if (decoded is! Map<String, dynamic>) return;
+
+      _isRestoringDraft = true;
+      if (!mounted) return;
+
+      setState(() {
+        _docTypeController.text =
+            (decoded['Doctype']?.toString().trim().isNotEmpty ?? false)
+            ? decoded['Doctype'].toString()
+            : 'OR';
+        _customerController.text =
+            (decoded['Customerid']?.toString().trim().isNotEmpty ?? false)
+            ? decoded['Customerid'].toString()
+            : '100001';
+        _salesOrgController.text =
+            (decoded['Salesorg']?.toString().trim().isNotEmpty ?? false)
+            ? decoded['Salesorg'].toString()
+            : '1000';
+        _distChannelController.text =
+            (decoded['Distchannel']?.toString().trim().isNotEmpty ?? false)
+            ? decoded['Distchannel'].toString()
+            : '10';
+        _divisionController.text =
+            (decoded['Division']?.toString().trim().isNotEmpty ?? false)
+            ? decoded['Division'].toString()
+            : '00';
+
+        final dynamic rawItems = decoded['To_Items'];
+        if (rawItems is List) {
+          final restoredItems = rawItems
+              .whereType<Map>()
+              .map(
+                (e) => {
+                  'ItemNo': e['ItemNo']?.toString() ?? '000010',
+                  'MaterialID': e['MaterialID']?.toString() ?? '',
+                  'Quantity': e['Quantity']?.toString() ?? '1',
+                  'Plant': e['Plant']?.toString() ?? '1000',
+                  'BaseUnit': e['BaseUnit']?.toString() ?? 'PC',
+                },
+              )
+              .toList();
+
+          if (restoredItems.isNotEmpty) {
+            _items = restoredItems;
+          }
+        }
+
+        final savedAtRaw = decoded['SavedAt']?.toString();
+        _lastDraftSavedAt = savedAtRaw == null
+            ? null
+            : DateTime.tryParse(savedAtRaw);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã khôi phục dữ liệu.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (_) {
+      await prefs.remove(_draftKey);
+    } finally {
+      _isRestoringDraft = false;
+    }
+  }
+
+  Future<void> _clearDraft({bool resetForm = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_draftKey);
+
+    if (!mounted) return;
+
+    if (!resetForm) {
+      setState(() {
+        _lastDraftSavedAt = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _docTypeController.text = 'OR';
+      _customerController.text = '100001';
+      _salesOrgController.text = '1000';
+      _distChannelController.text = '10';
+      _divisionController.text = '00';
+      _items = [
+        {
+          'ItemNo': '000010',
+          'MaterialID': '',
+          'Quantity': '1',
+          'Plant': '1000',
+          'BaseUnit': 'PC',
+        },
+      ];
+      _selectedStocks.clear();
+      _lastDraftSavedAt = null;
+    });
+  }
+
+  String _draftSavedAtText() {
+    if (_lastDraftSavedAt == null) return 'Draft: None';
+    return 'Draft saved: ${DateFormat('HH:mm dd/MM/yyyy').format(_lastDraftSavedAt!)}';
+  }
+
   void _addItem() {
     setState(() {
       int nextNo = (_items.length + 1) * 10;
@@ -58,11 +236,13 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         'BaseUnit': 'PC',
       });
     });
+    _saveDraft();
   }
 
   void _removeItem(int index) {
     if (_items.length > 1) {
       setState(() => _items.removeAt(index));
+      _saveDraft();
     }
   }
 
@@ -82,6 +262,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         // FIX LỖI 2: Reset kho dòng này khi đổi vật tư
         _selectedStocks[index] = null;
       });
+      _saveDraft();
     }
   }
 
@@ -120,6 +301,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     try {
       final result = await _service.createSalesOrder(soPayload);
       String orderId = result['Orderid'] ?? "N/A";
+      await _clearDraft();
       _showSuccessAndNavigate(orderId);
     } catch (e) {
       _showErrorSnackBar("Lỗi SAP: $e");
@@ -196,9 +378,11 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildSectionHeader(
-                      "CHI TIẾT VẬT TƯ",
-                      Icons.shopping_cart_outlined,
+                    Expanded(
+                      child: _buildSectionHeader(
+                        "CHI TIẾT VẬT TƯ",
+                        Icons.shopping_cart_outlined,
+                      ),
                     ),
                     TextButton.icon(
                       onPressed: _addItem,
@@ -233,14 +417,13 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     );
   }
 
-  // --- TRẢ LẠI TOÀN BỘ UI COMPONENTS GỐC CỦA BẠN ---
-
   Widget _buildElegantHeader() {
     return Container(
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 10,
         bottom: 25,
         left: 10,
+        right: 10,
       ),
       width: double.infinity,
       decoration: BoxDecoration(
@@ -253,18 +436,68 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            icon: Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-            onPressed: () => Navigator.pop(context),
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.arrow_back_ios_new,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
+              Expanded(
+                child: Text(
+                  "Tạo Sales Order",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.save_outlined, color: Colors.white, size: 22),
+                onPressed: () async {
+                  await _saveDraft();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Đã lưu bản nháp.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.delete_sweep_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                onPressed: () async {
+                  await _clearDraft(resetForm: true);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Đã xóa bản nháp.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-          Text(
-            "Tạo Sales Order",
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          Padding(
+            padding: const EdgeInsets.only(left: 50),
+            child: Text(
+              _draftSavedAtText(),
+              style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),
         ],
@@ -401,24 +634,24 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
             ],
           ),
           SizedBox(height: 15),
-          Row(
+          Wrap(
+            spacing: 20,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: _buildSmallInput(
-                  "Số lượng",
-                  (v) => item['Quantity'] = v,
-                  initialValue: item['Quantity'],
-                ),
+              SizedBox(
+                width: 120,
+                child: _buildSmallInput("Số lượng", (v) {
+                  item['Quantity'] = v;
+                  _saveDraft();
+                }, initialValue: item['Quantity']),
               ),
-              SizedBox(width: 20),
-              Expanded(
-                child: _buildSmallInput(
-                  "Plant",
-                  (v) => item['Plant'] = v,
-                  initialValue: item['Plant'],
-                ),
+              SizedBox(
+                width: 120,
+                child: _buildSmallInput("Plant", (v) {
+                  item['Plant'] = v;
+                  _saveDraft();
+                }, initialValue: item['Plant']),
               ),
-              SizedBox(width: 20),
               Container(
                 padding: EdgeInsets.only(top: 15),
                 child: Text(
