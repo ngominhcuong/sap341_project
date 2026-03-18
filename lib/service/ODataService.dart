@@ -1,13 +1,15 @@
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:sap341/model/Material.dart';
 import 'package:sap341/model/Stock.dart';
 
 class ODataService {
   final String baseUrl =
+      dotenv.env['SAP_BASE_URL'] ??
       "https://s40lp1.ucc.cit.tum.de/sap/opu/odata/sap/Z_GR5_SE1877_PRJ_SRV";
-  final String username = "dev-382";
-  final String password = "ngominhcuong"; // Thay bằng password của bạn
+  final String username = dotenv.env['SAP_USERNAME'] ?? '';
+  final String password = dotenv.env['SAP_PASSWORD'] ?? '';
 
   // Cấu hình theo SEGW cho luồng Goods Issue deep insert.
   // Nếu backend đổi tên, chỉ sửa các hằng số này.
@@ -21,6 +23,12 @@ class ODataService {
 
   // Header xác thực cơ bản dùng cho các lệnh GET
   Map<String, String> get _authHeader {
+    if (username.isEmpty || password.isEmpty) {
+      throw StateError(
+        'Missing SAP credentials in .env. Please set SAP_USERNAME and SAP_PASSWORD.',
+      );
+    }
+
     String basicAuth =
         'Basic ' + base64Encode(utf8.encode('$username:$password'));
     return {
