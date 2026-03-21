@@ -284,7 +284,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       child: TextField(
         controller: _searchController,
         onChanged: (value) {
-          _searchKeyword = value;
+          _searchKeyword = value.trim();
           _runFilter();
         },
         style: const TextStyle(color: Colors.white),

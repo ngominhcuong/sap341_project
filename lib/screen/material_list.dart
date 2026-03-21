@@ -88,7 +88,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
             );
         final matchesUnit =
             _selectedUnit == 'Tất cả' || item.baseUnit == _selectedUnit;
-        final itemPlant = item.plant.isEmpty ? "MI00" : item.plant;
+        final itemPlant = item.plant;
         final matchesPlant =
             _selectedPlant == 'Tất cả' || itemPlant == _selectedPlant;
         return matchesSearch && matchesUnit && matchesPlant;
@@ -206,7 +206,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
       child: TextField(
         controller: _searchController,
         onChanged: (v) {
-          _searchKeyword = v;
+          _searchKeyword = v.trim();
           _runFilter();
         },
         style: const TextStyle(color: Colors.white),

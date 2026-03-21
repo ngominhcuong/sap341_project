@@ -7,9 +7,15 @@ class StockScreen extends StatefulWidget {
   final String? materialID;
   final String? materialName;
   final String? plant;
+  final bool isPicker;
 
-  const StockScreen({Key? key, this.materialID, this.materialName, this.plant})
-    : super(key: key);
+  const StockScreen({
+    Key? key,
+    this.materialID,
+    this.materialName,
+    this.plant,
+    this.isPicker = false,
+  }) : super(key: key);
 
   @override
   _StockScreenState createState() => _StockScreenState();
@@ -203,7 +209,10 @@ class _StockScreenState extends State<StockScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.materialName ?? "Danh mục Tồn kho",
+                      widget.materialName ??
+                          (widget.isPicker
+                              ? "Chọn vật tư từ tồn kho"
+                              : "Danh mục Tồn kho"),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -248,7 +257,7 @@ class _StockScreenState extends State<StockScreen> {
       child: TextField(
         controller: _searchController,
         onChanged: (v) {
-          _searchKeyword = v;
+          _searchKeyword = v.trim();
           _runFilter();
         },
         style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -401,112 +410,116 @@ class _StockScreenState extends State<StockScreen> {
         ? const Color(0xFFD48806)
         : const Color(0xFF237804);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          children: [
-            Container(
-              width: 5,
-              decoration: BoxDecoration(
-                color: statusColor,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(15),
-                  bottomLeft: Radius.circular(15),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(15),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: _infoRow(
-                            Icons.qr_code_2_rounded,
-                            "Mã VT",
-                            stock.materialID.replaceFirst(RegExp(r'^0+'), ''),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildStatusTag(isLow, statusColor),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: _infoRow(
-                            Icons.warehouse_rounded,
-                            "Kho",
-                            stock.storageLocation,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _infoRow(
-                            Icons.factory_outlined,
-                            "Plant",
-                            stock.plant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 25, color: Color(0xFFF0F0F0)),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Tồn khả dụng:",
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
-                          ),
-                        ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              "${stock.availableQty}",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: statusColor,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              stock.baseUnit,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+    return InkWell(
+      onTap: widget.isPicker ? () => Navigator.pop(context, stock) : null,
+      borderRadius: BorderRadius.circular(15),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              Container(
+                width: 5,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(15),
+                    bottomLeft: Radius.circular(15),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: _infoRow(
+                              Icons.qr_code_2_rounded,
+                              "Mã VT",
+                              stock.materialID.replaceFirst(RegExp(r'^0+'), ''),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildStatusTag(isLow, statusColor),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: _infoRow(
+                              Icons.warehouse_rounded,
+                              "Kho",
+                              stock.storageLocation,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _infoRow(
+                              Icons.factory_outlined,
+                              "Plant",
+                              stock.plant,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 25, color: Color(0xFFF0F0F0)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Tồn khả dụng:",
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                "${stock.availableQty}",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: statusColor,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                stock.baseUnit,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -2,9 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sap341/service/ODataService.dart';
-import 'package:sap341/model/Material.dart';
-import 'package:sap341/screen/material_list.dart';
 import 'package:sap341/screen/good_issue.dart';
+import 'package:sap341/screen/stock.dart';
 import 'package:sap341/model/Stock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -108,9 +107,9 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     final draft = {
       'Doctype': _docTypeController.text,
       'Customerid': _customerController.text,
-      'Salesorg': _salesOrgController.text,
-      'Distchannel': _distChannelController.text,
-      'Division': _divisionController.text,
+      'Salesorg': _salesOrgController.text.toUpperCase(),
+      'Distchannel': _distChannelController.text.toUpperCase(),
+      'Division': _divisionController.text.toUpperCase(),
       'To_Items': draftItems,
       'SavedAt': now.toIso8601String(),
     };
@@ -146,15 +145,15 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
             : '';
         _salesOrgController.text =
             (decoded['Salesorg']?.toString().trim().isNotEmpty ?? false)
-            ? decoded['Salesorg'].toString()
+            ? decoded['Salesorg'].toString().toUpperCase()
             : '';
         _distChannelController.text =
             (decoded['Distchannel']?.toString().trim().isNotEmpty ?? false)
-            ? decoded['Distchannel'].toString()
+            ? decoded['Distchannel'].toString().toUpperCase()
             : '';
         _divisionController.text =
             (decoded['Division']?.toString().trim().isNotEmpty ?? false)
-            ? decoded['Division'].toString()
+            ? decoded['Division'].toString().toUpperCase()
             : '';
 
         final dynamic rawItems = decoded['To_Items'];
@@ -312,31 +311,31 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     final selected = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MaterialListScreen(isPicker: true),
+        builder: (context) => const StockScreen(isPicker: true),
       ),
     );
 
-    if (selected != null && selected is MaterialModel) {
-      if (_isDuplicateMaterial(selected.materialID, index)) {
-        _showErrorSnackBar(
-          'Material ${selected.materialID} đã có trong danh sách, không thể thêm trùng.',
-        );
-        return;
-      }
-
-      setState(() {
-        _items[index]['MaterialID'] = selected.materialID;
-        _items[index]['BaseUnit'] = selected.baseUnit;
-        // Tự động fill Plant theo material vừa chọn.
-        final materialPlant = selected.plant.trim();
-        _items[index]['Plant'] = materialPlant;
-        _bumpFieldRefreshVersion(_items[index]['ItemNo']?.toString() ?? '');
-
-        // FIX LỖI 2: Reset kho dòng này khi đổi vật tư
-        _selectedStocks[index] = null;
-      });
-      _saveDraft();
+    if (selected == null || selected is! StockModel) {
+      return;
     }
+
+    if (_isDuplicateMaterial(selected.materialID, index)) {
+      _showErrorSnackBar(
+        'Material ${selected.materialID} đã có trong danh sách, không thể thêm trùng.',
+      );
+      return;
+    }
+
+    setState(() {
+      _items[index]['MaterialID'] = selected.materialID;
+      _items[index]['BaseUnit'] = selected.baseUnit;
+      _items[index]['Plant'] = selected.plant;
+      _bumpFieldRefreshVersion(_items[index]['ItemNo']?.toString() ?? '');
+
+      // Reset kho đã chọn của dòng hiện tại khi đổi material.
+      _selectedStocks[index] = selected;
+    });
+    _saveDraft();
   }
 
   Future<void> _submitOrder() async {
@@ -383,9 +382,9 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     Map<String, dynamic> soPayload = {
       "Doctype": _docTypeController.text,
       "Customerid": _customerController.text,
-      "Salesorg": _salesOrgController.text,
-      "Distchannel": _distChannelController.text,
-      "Division": _divisionController.text,
+      "Salesorg": _salesOrgController.text.toUpperCase(),
+      "Distchannel": _distChannelController.text.toUpperCase(),
+      "Division": _divisionController.text.toUpperCase(),
       "To_Items": _items
           .map(
             (item) => {
