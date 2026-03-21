@@ -16,64 +16,81 @@ class MainMenuScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: backgroundLight,
-      body: Column(
+      body: Stack(
         children: [
-          _buildSystemHeader(context),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: isNarrow ? 2 : 3,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: isNarrow ? 0.86 : 1.05,
-              ),
-              itemCount: 4,
-              itemBuilder: (context, index) {
-                final items = [
-                  [
-                    'View Material',
-                    'Tra cứu danh mục vật tư',
-                    Icons.inventory_2_outlined,
-                    MaterialListScreen(),
-                  ],
-                  [
-                    'View Stock',
-                    'Kiểm tra số lượng tồn kho',
-                    Icons.warehouse_outlined,
-                    StockScreen(),
-                  ],
-                  [
-                    'Create Sales Order',
-                    'Tạo đơn hàng mới',
-                    Icons.add_shopping_cart_rounded,
-                    CreateSOScreen(),
-                  ],
-                  [
-                    'View Sales Order',
-                    'Xem đơn hàng đã tạo',
-                    Icons.insert_chart_outlined_rounded,
-                    SalesOrderListScreen(),
-                  ],
-                ];
-
-                final item = items[index];
-                return _buildMenuItem(
-                  context,
-                  item[0] as String,
-                  item[1] as String,
-                  item[2] as IconData,
-                  item[3] as Widget,
-                );
-              },
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              "assets/images/backgrsap.png",
+              fit: BoxFit.cover,
             ),
+          ),
+          // Content
+          Column(
+            children: [
+              _buildSystemHeader(context),
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 16,
+                  ),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: size.width < 500 ? 2 : (isNarrow ? 2 : 4),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: size.width < 500
+                        ? 0.95
+                        : (isNarrow ? 1.0 : 1.2),
+                  ),
+                  itemCount: 4,
+                  itemBuilder: (context, index) {
+                    final items = [
+                      [
+                        'View Material',
+                        'Tra cứu danh mục vật tư',
+                        Icons.inventory_2_outlined,
+                        MaterialListScreen(),
+                      ],
+                      [
+                        'View Stock',
+                        'Kiểm tra số lượng tồn kho',
+                        Icons.warehouse_outlined,
+                        StockScreen(),
+                      ],
+                      [
+                        'Create Sales Order',
+                        'Tạo đơn hàng mới',
+                        Icons.add_shopping_cart_rounded,
+                        CreateSOScreen(),
+                      ],
+                      [
+                        'View Sales Order',
+                        'Xem đơn hàng đã tạo',
+                        Icons.insert_chart_outlined_rounded,
+                        SalesOrderListScreen(),
+                      ],
+                    ];
+
+                    final item = items[index];
+                    return _buildMenuItem(
+                      context,
+                      item[0] as String,
+                      item[1] as String,
+                      item[2] as IconData,
+                      item[3] as Widget,
+                    );
+                  },
+                ),
+              ),
+              _buildFooter(context),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // --- Header hien thi ten he thong ---
   Widget _buildSystemHeader(BuildContext context) {
     return Container(
       padding: EdgeInsets.only(
@@ -120,7 +137,6 @@ class MainMenuScreen extends StatelessWidget {
     );
   }
 
-  // --- Cac card item lua chon ---
   Widget _buildMenuItem(
     BuildContext context,
     String title,
@@ -130,15 +146,16 @@ class MainMenuScreen extends StatelessWidget {
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Color(0xFFF0F8F0),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 15,
-            offset: Offset(0, 8),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: Offset(0, 4),
           ),
         ],
+        border: Border.all(color: primaryGreen.withOpacity(0.1), width: 1),
       ),
       child: Material(
         color: Colors.transparent,
@@ -153,18 +170,18 @@ class MainMenuScreen extends StatelessWidget {
             }
           },
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 30, color: primaryGreen),
+                Icon(icon, size: 50, color: primaryGreen),
                 const SizedBox(height: 10),
                 Text(
                   title,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                    fontSize: 17,
                     color: Color(0xFF121212),
                   ),
                   maxLines: 2,
@@ -173,13 +190,41 @@ class MainMenuScreen extends StatelessWidget {
                 SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooter(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      decoration: BoxDecoration(
+        color: primaryGreen,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          '© SAP341 - SE1877SAP - GROUP 5 - PROJECT',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.9),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
         ),
       ),
     );
