@@ -30,6 +30,8 @@ class MaterialModel {
       // Nếu Backend không trả về Plant, hãy gán mặc định là '1000'
       // vì tạo Sales Order trong SAP bắt buộc phải có Plant ở mức Item.
       plant:
+          json['WERKS_D']?.toString() ??
+          json['WERKS']?.toString() ??
           json['Werks_d']?.toString() ??
           json['Werks']?.toString() ??
           json['WerksD']?.toString() ??

@@ -20,6 +20,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
   // Người dùng chỉ nhập thêm Movetype + Storageloc cho từng item
   final Map<int, TextEditingController> _moveTypeControllers = {};
   final Map<int, String?> _selectedStorageLocs = {};
+  final Map<int, List<StockModel>> _stockOptionsByIndex = {};
 
   final Color primaryGreen = Color(0xFF1B5E20);
   final Color accentGreen = Color(0xFF2E7D32);
@@ -28,7 +29,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
   void initState() {
     super.initState();
     for (int i = 0; i < widget.items.length; i++) {
-      _moveTypeControllers[i] = TextEditingController(text: '601');
+      _moveTypeControllers[i] = TextEditingController(text: '231');
     }
   }
 
@@ -161,6 +162,8 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
             .where((s) => s.materialID == matId)
             .toList();
 
+        _stockOptionsByIndex[index] = filteredStocks;
+
         if (filteredStocks.isEmpty) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,6 +212,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           }).toList(),
           onChanged: (val) {
             setState(() {
+              _stockOptionsByIndex[index] = filteredStocks;
               _selectedStorageLocs[index] = val;
             });
           },
@@ -261,6 +265,57 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
         );
         return;
       }
+
+      final item = widget.items[i];
+      final itemPlant = item['Plant']?.toString().trim() ?? '';
+      final stockOptions = _stockOptionsByIndex[i] ?? const <StockModel>[];
+      StockModel? matchedStock;
+      for (final stock in stockOptions) {
+        if (stock.storageLocation == storageLoc) {
+          matchedStock = stock;
+          break;
+        }
+      }
+      final resolvedPlant = itemPlant.isNotEmpty
+          ? itemPlant
+          : (matchedStock?.plant.trim() ?? '');
+
+      final itemNo = item['ItemNo']?.toString() ?? (i + 1).toString();
+      final qtyRaw = item['Quantity']?.toString().trim() ?? '';
+      final requestQty = double.tryParse(qtyRaw);
+      if (requestQty == null || requestQty <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Dòng $itemNo có số lượng không hợp lệ.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      if (matchedStock != null && requestQty > matchedStock.availableQty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Dòng $itemNo vượt tồn kho (${matchedStock.availableQty}). Không thể xuất $requestQty.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (resolvedPlant.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Dòng $itemNo chưa có Plant. Vui lòng kiểm tra vật tư/kho đã chọn.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isProcessing = true);
@@ -270,15 +325,36 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
         widget.items.length,
         (i) {
           final item = widget.items[i];
+          final selectedSloc = _selectedStorageLocs[i] ?? '';
+          final stockOptions = _stockOptionsByIndex[i] ?? const <StockModel>[];
+          StockModel? matchedStock;
+          for (final stock in stockOptions) {
+            if (stock.storageLocation == selectedSloc) {
+              matchedStock = stock;
+              break;
+            }
+          }
+
+          final baseUnitFromItem = item['BaseUnit']?.toString().trim() ?? '';
+          final baseUnitFromStock = matchedStock?.baseUnit.trim() ?? '';
+          final resolvedBaseUnit = baseUnitFromStock.isNotEmpty
+              ? baseUnitFromStock
+              : (baseUnitFromItem.isNotEmpty ? baseUnitFromItem : 'EA');
+          final plantFromItem = item['Plant']?.toString().trim() ?? '';
+          final plantFromStock = matchedStock?.plant.trim() ?? '';
+          final resolvedPlant = plantFromItem.isNotEmpty
+              ? plantFromItem
+              : plantFromStock;
+
           return {
             "Orderid": widget.orderId,
             "Itemno": item['ItemNo']?.toString() ?? '',
             "Materialid": item['MaterialID']?.toString() ?? '',
-            "Plant": item['Plant']?.toString() ?? '',
-            "Storageloc": _selectedStorageLocs[i] ?? '',
+            "Plant": resolvedPlant,
+            "Storageloc": selectedSloc,
             "Movetype": _moveTypeControllers[i]?.text.trim() ?? '',
             "Quantity": item['Quantity']?.toString() ?? '0',
-            "Baseunit": item['BaseUnit']?.toString() ?? '',
+            "Baseunit": resolvedBaseUnit,
           };
         },
       );

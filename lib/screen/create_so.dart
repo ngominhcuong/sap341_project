@@ -19,7 +19,9 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
   final ODataService _service = ODataService();
   bool _isSending = false;
   bool _isRestoringDraft = false;
+  bool _showValidationErrors = false;
   DateTime? _lastDraftSavedAt;
+  final Map<String, int> _fieldRefreshVersions = {};
 
   // FIX LỖI 1: Khai báo biến quản lý kho đã chọn
   Map<int, StockModel?> _selectedStocks = {};
@@ -32,27 +34,33 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     text: 'OR',
   );
   final TextEditingController _customerController = TextEditingController(
-    text: '100001',
+    text: '',
   );
   final TextEditingController _salesOrgController = TextEditingController(
-    text: '1000',
+    text: '',
   );
   final TextEditingController _distChannelController = TextEditingController(
-    text: '10',
+    text: '',
   );
   final TextEditingController _divisionController = TextEditingController(
-    text: '00',
+    text: '',
   );
 
-  List<Map<String, dynamic>> _items = [
-    {
-      'ItemNo': '000010',
+  List<Map<String, dynamic>> _items = [_newEmptyItem('000010')];
+
+  static Map<String, dynamic> _newEmptyItem(String itemNo) {
+    return <String, dynamic>{
+      'ItemNo': itemNo,
       'MaterialID': '',
-      'Quantity': '1',
-      'Plant': '1000',
-      'BaseUnit': 'PC',
-    },
-  ];
+      'Quantity': '',
+      'Plant': '',
+      'BaseUnit': '',
+    };
+  }
+
+  void _bumpFieldRefreshVersion(String itemNo) {
+    _fieldRefreshVersions[itemNo] = (_fieldRefreshVersions[itemNo] ?? 0) + 1;
+  }
 
   @override
   void initState() {
@@ -94,13 +102,16 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
 
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
+    final draftItems = _items
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
     final draft = {
       'Doctype': _docTypeController.text,
       'Customerid': _customerController.text,
       'Salesorg': _salesOrgController.text,
       'Distchannel': _distChannelController.text,
       'Division': _divisionController.text,
-      'To_Items': _items,
+      'To_Items': draftItems,
       'SavedAt': now.toIso8601String(),
     };
 
@@ -132,37 +143,42 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         _customerController.text =
             (decoded['Customerid']?.toString().trim().isNotEmpty ?? false)
             ? decoded['Customerid'].toString()
-            : '100001';
+            : '';
         _salesOrgController.text =
             (decoded['Salesorg']?.toString().trim().isNotEmpty ?? false)
             ? decoded['Salesorg'].toString()
-            : '1000';
+            : '';
         _distChannelController.text =
             (decoded['Distchannel']?.toString().trim().isNotEmpty ?? false)
             ? decoded['Distchannel'].toString()
-            : '10';
+            : '';
         _divisionController.text =
             (decoded['Division']?.toString().trim().isNotEmpty ?? false)
             ? decoded['Division'].toString()
-            : '00';
+            : '';
 
         final dynamic rawItems = decoded['To_Items'];
         if (rawItems is List) {
           final restoredItems = rawItems
               .whereType<Map>()
-              .map(
-                (e) => {
+              .map<Map<String, dynamic>>(
+                (e) => <String, dynamic>{
                   'ItemNo': e['ItemNo']?.toString() ?? '000010',
                   'MaterialID': e['MaterialID']?.toString() ?? '',
-                  'Quantity': e['Quantity']?.toString() ?? '1',
-                  'Plant': e['Plant']?.toString() ?? '1000',
-                  'BaseUnit': e['BaseUnit']?.toString() ?? 'PC',
+                  'Quantity': e['Quantity']?.toString() ?? '',
+                  'Plant': e['Plant']?.toString() ?? '',
+                  'BaseUnit': e['BaseUnit']?.toString() ?? '',
                 },
               )
-              .toList();
+              .toList(growable: true);
 
           if (restoredItems.isNotEmpty) {
-            _items = restoredItems;
+            _items = List<Map<String, dynamic>>.from(restoredItems);
+            _fieldRefreshVersions
+              ..clear()
+              ..addEntries(
+                _items.map((e) => MapEntry(e['ItemNo']?.toString() ?? '', 1)),
+              );
           }
         }
 
@@ -202,21 +218,19 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
 
     setState(() {
       _docTypeController.text = 'OR';
-      _customerController.text = '100001';
-      _salesOrgController.text = '1000';
-      _distChannelController.text = '10';
-      _divisionController.text = '00';
-      _items = [
-        {
-          'ItemNo': '000010',
-          'MaterialID': '',
-          'Quantity': '1',
-          'Plant': '1000',
-          'BaseUnit': 'PC',
-        },
-      ];
+      _customerController.text = '';
+      _salesOrgController.text = '';
+      _distChannelController.text = '';
+      _divisionController.text = '';
+      _items = [_newEmptyItem('000010')];
       _selectedStocks.clear();
+      _fieldRefreshVersions
+        ..clear()
+        ..addEntries(
+          _items.map((e) => MapEntry(e['ItemNo']?.toString() ?? '', 0)),
+        );
       _lastDraftSavedAt = null;
+      _showValidationErrors = false;
     });
   }
 
@@ -226,24 +240,72 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
   }
 
   void _addItem() {
+    late String newItemNo;
     setState(() {
       int nextNo = (_items.length + 1) * 10;
-      _items.add({
-        'ItemNo': nextNo.toString().padLeft(6, '0'),
-        'MaterialID': '',
-        'Quantity': '1',
-        'Plant': '1000',
-        'BaseUnit': 'PC',
-      });
+      newItemNo = nextNo.toString().padLeft(6, '0');
+      _items = [..._items, _newEmptyItem(newItemNo)];
+      _fieldRefreshVersions[newItemNo] = 0;
     });
     _saveDraft();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Đã thêm dòng $newItemNo'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
-  void _removeItem(int index) {
-    if (_items.length > 1) {
-      setState(() => _items.removeAt(index));
-      _saveDraft();
+  Future<void> _removeItem(int index) async {
+    if (_items.length <= 1) {
+      return;
     }
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: Text('Bạn có chắc muốn xóa dòng ${_items[index]['ItemNo']}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final removedItemNo = _items[index]['ItemNo']?.toString() ?? '';
+    setState(() {
+      _items = List<Map<String, dynamic>>.from(_items)..removeAt(index);
+      _fieldRefreshVersions.remove(removedItemNo);
+    });
+    _saveDraft();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Đã xóa dòng $removedItemNo'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  bool _isDuplicateMaterial(String materialId, int currentIndex) {
+    for (int i = 0; i < _items.length; i++) {
+      if (i == currentIndex) continue;
+      final existing = _items[i]['MaterialID']?.toString().trim() ?? '';
+      if (existing.isNotEmpty && existing == materialId.trim()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> _openMaterialPicker(int index) async {
@@ -255,9 +317,20 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     );
 
     if (selected != null && selected is MaterialModel) {
+      if (_isDuplicateMaterial(selected.materialID, index)) {
+        _showErrorSnackBar(
+          'Material ${selected.materialID} đã có trong danh sách, không thể thêm trùng.',
+        );
+        return;
+      }
+
       setState(() {
         _items[index]['MaterialID'] = selected.materialID;
         _items[index]['BaseUnit'] = selected.baseUnit;
+        // Tự động fill Plant theo material vừa chọn.
+        final materialPlant = selected.plant.trim();
+        _items[index]['Plant'] = materialPlant;
+        _bumpFieldRefreshVersion(_items[index]['ItemNo']?.toString() ?? '');
 
         // FIX LỖI 2: Reset kho dòng này khi đổi vật tư
         _selectedStocks[index] = null;
@@ -267,8 +340,18 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
   }
 
   Future<void> _submitOrder() async {
-    if (_customerController.text.isEmpty) {
+    setState(() {
+      _showValidationErrors = true;
+    });
+
+    if (_customerController.text.trim().isEmpty) {
       _showErrorSnackBar("Vui lòng nhập mã khách hàng");
+      return;
+    }
+    if (_salesOrgController.text.trim().isEmpty ||
+        _distChannelController.text.trim().isEmpty ||
+        _divisionController.text.trim().isEmpty) {
+      _showErrorSnackBar("Vui lòng nhập đầy đủ Sales Org, Channel, Division");
       return;
     }
     for (var item in _items) {
@@ -276,9 +359,26 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         _showErrorSnackBar("Dòng ${item['ItemNo']} chưa chọn vật tư");
         return;
       }
+
+      final plant = item['Plant']?.toString().trim() ?? '';
+      if (plant.isEmpty) {
+        _showErrorSnackBar("Dòng ${item['ItemNo']} chưa nhập Plant");
+        return;
+      }
+
+      final qtyRaw = item['Quantity']?.toString().trim() ?? '';
+      final qty = double.tryParse(qtyRaw);
+      if (qty == null || qty <= 0) {
+        _showErrorSnackBar("Dòng ${item['ItemNo']} có số lượng phải lớn hơn 0");
+        return;
+      }
     }
 
     setState(() => _isSending = true);
+
+    final createdItems = _items
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
 
     Map<String, dynamic> soPayload = {
       "Doctype": _docTypeController.text,
@@ -302,7 +402,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
       final result = await _service.createSalesOrder(soPayload);
       String orderId = result['Orderid'] ?? "N/A";
       await _clearDraft();
-      _showSuccessAndNavigate(orderId);
+      _showSuccessAndNavigate(orderId, createdItems);
     } catch (e) {
       _showErrorSnackBar("Lỗi SAP: $e");
     } finally {
@@ -310,7 +410,10 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     }
   }
 
-  void _showSuccessAndNavigate(String orderId) {
+  void _showSuccessAndNavigate(
+    String orderId,
+    List<Map<String, dynamic>> createdItems,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -323,97 +426,120 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
-          Center(
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryGreen,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        GoodsIssueScreen(orderId: orderId, items: _items),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: primaryGreen),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
                 ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _goHome();
+                },
+                child: Text("VỀ HOME", style: TextStyle(color: primaryGreen)),
+              ),
+              SizedBox(width: 10),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryGreen,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => GoodsIssueScreen(
+                        orderId: orderId,
+                        items: createdItems,
+                      ),
+                    ),
+                  );
+                },
                 child: Text(
-                  "XÁC NHẬN XUẤT KHO (GI)",
+                  "TIẾP TỤC POST GI",
                   style: TextStyle(color: Colors.white),
                 ),
               ),
-            ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  void _goHome() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: backgroundLight,
-      body: Column(
-        children: [
-          _buildElegantHeader(),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.all(20),
-              children: [
-                _buildSectionHeader(
-                  "THÔNG TIN ĐƠN HÀNG",
-                  Icons.description_outlined,
-                ),
-                _buildCustomerCard(),
-                SizedBox(height: 25),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: _buildSectionHeader(
-                        "CHI TIẾT VẬT TƯ",
-                        Icons.shopping_cart_outlined,
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: _addItem,
-                      icon: Icon(
-                        Icons.add_circle_outline,
-                        color: accentGreen,
-                        size: 20,
-                      ),
-                      label: Text(
-                        "Thêm dòng",
-                        style: TextStyle(
-                          color: accentGreen,
-                          fontWeight: FontWeight.bold,
+    return WillPopScope(
+      onWillPop: () async {
+        _goHome();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: backgroundLight,
+        body: Column(
+          children: [
+            _buildElegantHeader(),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.all(20),
+                children: [
+                  _buildSectionHeader(
+                    "THÔNG TIN ĐƠN HÀNG",
+                    Icons.description_outlined,
+                  ),
+                  _buildCustomerCard(),
+                  SizedBox(height: 25),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: _buildSectionHeader(
+                          "CHI TIẾT VẬT TƯ",
+                          Icons.shopping_cart_outlined,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                ..._items
-                    .asMap()
-                    .entries
-                    .map((e) => _buildItemCard(e.key, e.value))
-                    .toList(),
-                SizedBox(height: 100),
-              ],
+                      TextButton.icon(
+                        onPressed: _addItem,
+                        icon: Icon(
+                          Icons.add_circle_outline,
+                          color: accentGreen,
+                          size: 20,
+                        ),
+                        label: Text(
+                          "Thêm dòng",
+                          style: TextStyle(
+                            color: accentGreen,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ..._items
+                      .asMap()
+                      .entries
+                      .map((e) => _buildItemCard(e.key, e.value))
+                      .toList(),
+                  SizedBox(height: 100),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        floatingActionButton: _buildSubmitButton(),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _buildSubmitButton(),
     );
   }
 
@@ -447,7 +573,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                   color: Colors.white,
                   size: 20,
                 ),
-                onPressed: () => Navigator.pop(context),
+                onPressed: _goHome,
               ),
               Expanded(
                 child: Text(
@@ -529,6 +655,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                   _docTypeController,
                   "Loại (Type)",
                   Icons.assignment_outlined,
+                  hintText: 'OR',
                 ),
               ),
               SizedBox(width: 15),
@@ -538,6 +665,12 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                   _customerController,
                   "Mã Khách hàng",
                   Icons.person_search_outlined,
+                  hintText: 'VD: 100001',
+                  errorText:
+                      _showValidationErrors &&
+                          _customerController.text.trim().isEmpty
+                      ? 'Bắt buộc'
+                      : null,
                 ),
               ),
             ],
@@ -550,6 +683,12 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                   _salesOrgController,
                   "Sales Org",
                   Icons.business_outlined,
+                  hintText: 'VD: 1000',
+                  errorText:
+                      _showValidationErrors &&
+                          _salesOrgController.text.trim().isEmpty
+                      ? 'Bắt buộc'
+                      : null,
                 ),
               ),
               SizedBox(width: 10),
@@ -558,6 +697,12 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                   _distChannelController,
                   "Channel",
                   Icons.hub_outlined,
+                  hintText: 'VD: 10',
+                  errorText:
+                      _showValidationErrors &&
+                          _distChannelController.text.trim().isEmpty
+                      ? 'Bắt buộc'
+                      : null,
                 ),
               ),
               SizedBox(width: 10),
@@ -566,6 +711,12 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                   _divisionController,
                   "Division",
                   Icons.layers_outlined,
+                  hintText: 'VD: 00',
+                  errorText:
+                      _showValidationErrors &&
+                          _divisionController.text.trim().isEmpty
+                      ? 'Bắt buộc'
+                      : null,
                 ),
               ),
             ],
@@ -608,7 +759,13 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
                     padding: EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
                       border: Border(
-                        bottom: BorderSide(color: Colors.grey[200]!),
+                        bottom: BorderSide(
+                          color:
+                              _showValidationErrors &&
+                                  item['MaterialID'].toString().trim().isEmpty
+                              ? Colors.red
+                              : Colors.grey[200]!,
+                        ),
                       ),
                     ),
                     child: Text(
@@ -640,22 +797,49 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
             children: [
               SizedBox(
                 width: 120,
-                child: _buildSmallInput("Số lượng", (v) {
-                  item['Quantity'] = v;
-                  _saveDraft();
-                }, initialValue: item['Quantity']),
+                child: _buildSmallInput(
+                  "Số lượng",
+                  (v) {
+                    item['Quantity'] = v;
+                    _saveDraft();
+                  },
+                  initialValue: item['Quantity'],
+                  hintText: 'Nhập > 0',
+                  errorText: _showValidationErrors
+                      ? _quantityErrorText(item['Quantity']?.toString() ?? '')
+                      : null,
+                  fieldKey: ValueKey(
+                    'qty_${item['ItemNo']}_${_fieldRefreshVersions[item['ItemNo']?.toString() ?? ''] ?? 0}',
+                  ),
+                ),
               ),
               SizedBox(
                 width: 120,
-                child: _buildSmallInput("Plant", (v) {
-                  item['Plant'] = v;
-                  _saveDraft();
-                }, initialValue: item['Plant']),
+                child: _buildSmallInput(
+                  "Plant",
+                  (v) {
+                    item['Plant'] = v;
+                    _saveDraft();
+                  },
+                  initialValue: item['Plant'],
+                  hintText: 'VD: 1000',
+                  keyboardType: TextInputType.text,
+                  errorText:
+                      _showValidationErrors &&
+                          item['Plant'].toString().trim().isEmpty
+                      ? 'Bắt buộc'
+                      : null,
+                  fieldKey: ValueKey(
+                    'plant_${item['ItemNo']}_${_fieldRefreshVersions[item['ItemNo']?.toString() ?? ''] ?? 0}',
+                  ),
+                ),
               ),
               Container(
                 padding: EdgeInsets.only(top: 15),
                 child: Text(
-                  item['BaseUnit'] ?? 'PC',
+                  (item['BaseUnit']?.toString().trim().isEmpty ?? true)
+                      ? '-'
+                      : item['BaseUnit'].toString(),
                   style: TextStyle(color: Colors.grey, fontSize: 12),
                 ),
               ),
@@ -669,15 +853,25 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
   Widget _buildTextField(
     TextEditingController ctrl,
     String label,
-    IconData icon,
-  ) {
+    IconData icon, {
+    String? hintText,
+    String? errorText,
+  }) {
     return TextField(
       controller: ctrl,
+      onChanged: (_) {
+        if (_showValidationErrors) {
+          setState(() {});
+        }
+      },
       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
+        hintText: hintText,
+        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+        errorText: errorText,
         prefixIcon: Icon(icon, color: accentGreen, size: 18),
-        border: InputBorder.none,
+        border: UnderlineInputBorder(),
         labelStyle: TextStyle(
           color: Colors.grey,
           fontWeight: FontWeight.normal,
@@ -691,14 +885,27 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     String label,
     Function(String) onChanged, {
     String? initialValue,
+    String? hintText,
+    String? errorText,
+    TextInputType keyboardType = TextInputType.number,
+    Key? fieldKey,
   }) {
     return TextFormField(
+      key: fieldKey,
       initialValue: initialValue,
-      onChanged: onChanged,
-      keyboardType: TextInputType.number,
+      onChanged: (v) {
+        onChanged(v);
+        if (_showValidationErrors) {
+          setState(() {});
+        }
+      },
+      keyboardType: keyboardType,
       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
       decoration: InputDecoration(
         labelText: label,
+        hintText: hintText,
+        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+        errorText: errorText,
         labelStyle: TextStyle(fontSize: 12, color: Colors.grey),
         isDense: true,
         enabledBorder: UnderlineInputBorder(
@@ -706,6 +913,14 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
         ),
       ),
     );
+  }
+
+  String? _quantityErrorText(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return 'Bắt buộc';
+    final qty = double.tryParse(value);
+    if (qty == null || qty <= 0) return '> 0';
+    return null;
   }
 
   Widget _buildSectionHeader(String title, IconData icon) {

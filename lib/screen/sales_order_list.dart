@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:sap341/screen/good_issue.dart';
 import 'package:sap341/service/ODataService.dart';
 
 class SalesOrderListScreen extends StatefulWidget {
@@ -135,6 +136,15 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       }
     }
     return '';
+  }
+
+  String _giStatus(Map<String, dynamic> order) {
+    final status = _field(order, ['Gistatus', 'gistatus', 'GIStatus']);
+    return status.toUpperCase();
+  }
+
+  bool _isGiPosted(Map<String, dynamic> order) {
+    return _giStatus(order) == 'POSTED';
   }
 
   List<Map<String, dynamic>> _itemsOf(Map<String, dynamic> order) {
@@ -429,6 +439,8 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     final netValue = _field(order, ['Netvalue', 'netvalue']);
     final currency = _field(order, ['Currency', 'currency', 'WAERK']);
     final items = _itemsOf(order);
+    final giStatus = _giStatus(order);
+    final isPosted = _isGiPosted(order);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -450,9 +462,22 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           backgroundColor: accentGreen.withOpacity(0.12),
           child: Icon(Icons.receipt_long, color: accentGreen),
         ),
-        title: Text(
-          orderId.isEmpty ? 'SO: -' : 'SO: $orderId',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                orderId.isEmpty ? 'SO: -' : 'SO: $orderId',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildGiStatusBadge(isPosted),
+          ],
         ),
         subtitle: Text(
           customerName.isEmpty
@@ -472,7 +497,36 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                 ? '-'
                 : '$netValue ${currency.isEmpty ? '' : currency}',
           ),
+          _buildDetailRow(
+            'GI Status',
+            giStatus.isEmpty ? 'NOT_POSTED' : giStatus,
+          ),
           const SizedBox(height: 10),
+          if (orderId.isNotEmpty && items.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isPosted ? Colors.grey : accentGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: isPosted ? null : () => _openPostGi(orderId, items),
+                icon: Icon(
+                  isPosted ? Icons.check_circle_outline : Icons.outbox_outlined,
+                  size: 18,
+                ),
+                label: Text(isPosted ? 'Đã Post GI' : 'Post GI'),
+              ),
+            ),
+          if (orderId.isNotEmpty && items.isNotEmpty)
+            const SizedBox(height: 10),
           Row(
             children: [
               Text(
@@ -513,6 +567,32 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGiStatusBadge(bool isPosted) {
+    final bgColor = isPosted
+        ? const Color(0xFFDFF3E3)
+        : const Color(0xFFFFF1E0);
+    final textColor = isPosted
+        ? const Color(0xFF1B5E20)
+        : const Color(0xFFB35A00);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        isPosted ? 'POSTED' : 'NOT_POSTED',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
@@ -563,6 +643,40 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         ),
       ),
     );
+  }
+
+  void _openPostGi(String orderId, List<Map<String, dynamic>> rawItems) {
+    final giItems = rawItems
+        .map<Map<String, dynamic>>((item) {
+          final quantity = _field(item, ['Quantity', 'quantity', 'KWMENG']);
+          final baseUnit = _field(item, ['Baseunit', 'baseunit', 'MEINS']);
+
+          return {
+            'ItemNo': _field(item, ['Itemno', 'itemno', 'POSNR']),
+            'MaterialID': _field(item, ['Materialid', 'materialid', 'MATNR']),
+            'Plant': _field(item, ['Plant', 'plant', 'WERKS']),
+            'Quantity': quantity.isEmpty ? '0' : quantity,
+            'BaseUnit': baseUnit.isEmpty ? 'EA' : baseUnit,
+          };
+        })
+        .where((e) => (e['MaterialID'] as String).isNotEmpty)
+        .toList();
+
+    if (giItems.isEmpty) {
+      _showErrorSnackBar('SO không có item hợp lệ để Post GI');
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GoodsIssueScreen(orderId: orderId, items: giItems),
+      ),
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
   }
 
   Widget _buildSlidingPagination(int totalPages) {

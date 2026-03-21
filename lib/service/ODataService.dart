@@ -19,7 +19,7 @@ class ODataService {
   static const String salesOrderItemsNavProperty = 'To_Items';
 
   String? _csrfToken;
-  String? _cookie;
+  final Map<String, String> _sessionCookies = <String, String>{};
 
   // Header xác thực cơ bản dùng cho các lệnh GET
   Map<String, String> get _authHeader {
@@ -40,38 +40,166 @@ class ODataService {
     };
   }
 
-  // --- HÀM LẤY TOKEN & COOKIE (Cần thiết cho POST, PUT, DELETE) ---
-  Future<void> _fetchCsrfToken() async {
-    try {
-      final response = await http.get(
-        Uri.parse("$baseUrl/"),
-        headers: {..._authHeader, 'X-CSRF-Token': 'Fetch'},
-      );
+  String _buildCookieHeader() {
+    return _sessionCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+  }
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        _csrfToken = response.headers['x-csrf-token'];
-        _cookie = response.headers['set-cookie'];
-        print("DEBUG: Fetch Token & Cookie thành công");
-      }
-    } catch (e) {
-      print("DEBUG: Lỗi fetch token: $e");
+  void _extractCookies(String? rawSetCookie) {
+    if (rawSetCookie == null || rawSetCookie.isEmpty) return;
+
+    final cookieParts = rawSetCookie.split(RegExp(r',(?=\s*[^;,\s]+=)'));
+    for (final part in cookieParts) {
+      final firstSegment = part.split(';').first.trim();
+      final sepIndex = firstSegment.indexOf('=');
+      if (sepIndex <= 0) continue;
+
+      final cookieName = firstSegment.substring(0, sepIndex).trim();
+      final cookieValue = firstSegment.substring(sepIndex + 1).trim();
+
+      if (cookieName.isEmpty || cookieValue.isEmpty) continue;
+      if (_isCookieAttribute(cookieName)) continue;
+      _sessionCookies[cookieName] = cookieValue;
     }
+  }
+
+  bool _isCookieAttribute(String name) {
+    const attrs = {
+      'path',
+      'expires',
+      'max-age',
+      'domain',
+      'secure',
+      'httponly',
+      'samesite',
+      'priority',
+    };
+    return attrs.contains(name.toLowerCase());
+  }
+
+  Future<void> _fetchCsrfFromUrl(
+    String url, {
+    Map<String, String>? extraHeaders,
+  }) async {
+    final headers = {..._authHeader, 'X-CSRF-Token': 'Fetch'};
+    if (extraHeaders != null) {
+      headers.addAll(extraHeaders);
+    }
+
+    final response = await http.get(Uri.parse(url), headers: headers);
+
+    if (response.statusCode != 200 &&
+        response.statusCode != 201 &&
+        response.statusCode != 204) {
+      return;
+    }
+
+    final token = response.headers['x-csrf-token'];
+    if (token != null && token.trim().isNotEmpty) {
+      _csrfToken = token.trim();
+    }
+    _extractCookies(response.headers['set-cookie']);
+  }
+
+  // --- HÀM LẤY TOKEN & COOKIE (Cần thiết cho POST, PUT, DELETE) ---
+  Future<void> _fetchCsrfToken({bool forceRefresh = false}) async {
+    if (forceRefresh) {
+      _csrfToken = null;
+      _sessionCookies.clear();
+    }
+
+    final csrfProbes = <Map<String, dynamic>>[
+      {
+        'url': '$baseUrl/MaterialSet?\$format=json&\$top=1',
+        'headers': <String, String>{},
+      },
+      {
+        'url': '$baseUrl/StockSet?\$format=json&\$top=1',
+        'headers': <String, String>{},
+      },
+      {
+        'url': '$baseUrl/\$metadata',
+        // Metadata trả XML nên không dùng Accept JSON ở probe này.
+        'headers': <String, String>{'Accept': 'application/xml'},
+      },
+      {'url': '$baseUrl/?\$format=json', 'headers': <String, String>{}},
+    ];
+
+    for (final probe in csrfProbes) {
+      final url = probe['url'] as String;
+      final headers = probe['headers'] as Map<String, String>;
+      await _fetchCsrfFromUrl(url, extraHeaders: headers);
+      final hasToken = _csrfToken != null && _csrfToken!.isNotEmpty;
+      final hasCookies = _sessionCookies.isNotEmpty;
+      if (hasToken && hasCookies) {
+        break;
+      }
+    }
+
+    if (_csrfToken == null || _csrfToken!.isEmpty) {
+      throw Exception('Không nhận được X-CSRF-Token từ SAP Gateway.');
+    }
+  }
+
+  Future<Map<String, String>> _csrfHeaders({bool forceRefresh = false}) async {
+    final hasToken = _csrfToken != null && _csrfToken!.isNotEmpty;
+    if (forceRefresh || !hasToken) {
+      await _fetchCsrfToken(forceRefresh: forceRefresh);
+    }
+
+    final headers = <String, String>{'X-CSRF-Token': _csrfToken!};
+    if (_sessionCookies.isNotEmpty) {
+      headers['Cookie'] = _buildCookieHeader();
+    }
+    return headers;
+  }
+
+  bool _shouldRetryForCsrf(http.Response response) {
+    final body = response.body.toLowerCase();
+    if (response.statusCode == 403) return true;
+    return body.contains('csrf') || body.contains('token validation failed');
+  }
+
+  Future<http.Response> _postWithCsrfRetry(Uri uri, String body) async {
+    final firstHeaders = {..._authHeader, ...await _csrfHeaders()};
+    var response = await http.post(uri, headers: firstHeaders, body: body);
+    _extractCookies(response.headers['set-cookie']);
+
+    if (_shouldRetryForCsrf(response)) {
+      final refreshedHeaders = {
+        ..._authHeader,
+        ...await _csrfHeaders(forceRefresh: true),
+      };
+      response = await http.post(uri, headers: refreshedHeaders, body: body);
+      _extractCookies(response.headers['set-cookie']);
+    }
+
+    return response;
+  }
+
+  Future<http.Response> _putWithCsrfRetry(Uri uri, String body) async {
+    final firstHeaders = {..._authHeader, ...await _csrfHeaders()};
+    var response = await http.put(uri, headers: firstHeaders, body: body);
+    _extractCookies(response.headers['set-cookie']);
+
+    if (_shouldRetryForCsrf(response)) {
+      final refreshedHeaders = {
+        ..._authHeader,
+        ...await _csrfHeaders(forceRefresh: true),
+      };
+      response = await http.put(uri, headers: refreshedHeaders, body: body);
+      _extractCookies(response.headers['set-cookie']);
+    }
+
+    return response;
   }
 
   // --- 1. TẠO SALES ORDER (DEEP INSERT) ---
   Future<Map<String, dynamic>> createSalesOrder(
     Map<String, dynamic> payload,
   ) async {
-    await _fetchCsrfToken();
-
-    final response = await http.post(
+    final response = await _postWithCsrfRetry(
       Uri.parse('$baseUrl/SalesOrderHeaderSet'),
-      headers: {
-        ..._authHeader,
-        'X-CSRF-Token': _csrfToken ?? '',
-        if (_cookie != null) 'Cookie': _cookie!,
-      },
-      body: jsonEncode(payload),
+      jsonEncode(payload),
     );
 
     if (response.statusCode == 201) {
@@ -217,16 +345,9 @@ class ODataService {
   Future<Map<String, dynamic>> createGoodsIssue(
     Map<String, dynamic> payload,
   ) async {
-    await _fetchCsrfToken();
-
-    final response = await http.post(
+    final response = await _postWithCsrfRetry(
       Uri.parse('$baseUrl/$goodsIssueEntitySet'),
-      headers: {
-        ..._authHeader,
-        'X-CSRF-Token': _csrfToken ?? '',
-        if (_cookie != null) 'Cookie': _cookie!,
-      },
-      body: jsonEncode(payload),
+      jsonEncode(payload),
     );
 
     if (response.statusCode == 201 || response.statusCode == 200) {
@@ -247,8 +368,6 @@ class ODataService {
 
   // Giữ hàm cũ để tương thích nếu màn khác còn dùng PUT từng dòng.
   Future<void> updateStock(Map<String, dynamic> data) async {
-    await _fetchCsrfToken();
-
     final String matId = data['Materialid'];
     final String plant = data['Plant'];
     final String sloc = data['Storageloc'];
@@ -256,15 +375,7 @@ class ODataService {
         "StockUpdateSet(Materialid='$matId',Plant='$plant',Storageloc='$sloc')";
     final url = Uri.parse("$baseUrl/$resourcePath");
 
-    final response = await http.put(
-      url,
-      headers: {
-        ..._authHeader,
-        'X-CSRF-Token': _csrfToken ?? '',
-        if (_cookie != null) 'Cookie': _cookie!,
-      },
-      body: jsonEncode(data),
-    );
+    final response = await _putWithCsrfRetry(url, jsonEncode(data));
 
     if (response.statusCode != 204 && response.statusCode != 200) {
       throw Exception(
