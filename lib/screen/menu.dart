@@ -13,19 +13,18 @@ class MainMenuScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final bool isNarrow = size.width < 700;
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
 
     return Scaffold(
       backgroundColor: backgroundLight,
       body: Stack(
         children: [
-          // Background image
           Positioned.fill(
             child: Image.asset(
               "assets/images/backgrsap.png",
               fit: BoxFit.cover,
             ),
           ),
-          // Content
           Column(
             children: [
               _buildSystemHeader(context),
@@ -39,9 +38,7 @@ class MainMenuScreen extends StatelessWidget {
                     crossAxisCount: size.width < 500 ? 2 : (isNarrow ? 2 : 4),
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio: size.width < 500
-                        ? 0.95
-                        : (isNarrow ? 1.0 : 1.2),
+                    childAspectRatio: _getChildAspectRatio(size),
                   ),
                   itemCount: 4,
                   itemBuilder: (context, index) {
@@ -89,6 +86,16 @@ class MainMenuScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  double _getChildAspectRatio(Size size) {
+    if (size.width < 400) return 0.85;
+    if (size.width < 500) return 0.92;
+    if (size.width < 600) return 0.88;
+    if (size.width < 700) return 0.95;
+    if (size.width < 1000) return 1.05;
+    if (size.width < 1200) return 1.15;
+    return 1.25;
   }
 
   Widget _buildSystemHeader(BuildContext context) {
@@ -144,6 +151,15 @@ class MainMenuScreen extends StatelessWidget {
     IconData icon,
     Widget? nextScreen,
   ) {
+    final size = MediaQuery.of(context).size;
+
+    final iconSize = _getResponsiveValue(size, 32, 38, 42, 48);
+    final titleFontSize = _getResponsiveValue(size, 15.0, 16.0, 17.0, 19.0);
+    final subtitleFontSize = _getResponsiveValue(size, 12.0, 13.0, 14.0, 15.0);
+    final padding = _getResponsiveValue(size, 8.0, 10.0, 11.0, 12.0);
+    final iconSpacing = _getResponsiveValue(size, 6.0, 7.0, 8.0, 9.0);
+    final textSpacing = _getResponsiveValue(size, 1.5, 2.0, 2.0, 2.5);
+
     return Container(
       decoration: BoxDecoration(
         color: Color(0xFFF0F8F0),
@@ -170,27 +186,33 @@ class MainMenuScreen extends StatelessWidget {
             }
           },
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(padding),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 50, color: primaryGreen),
-                const SizedBox(height: 10),
+                Icon(icon, size: iconSize.toDouble(), color: primaryGreen),
+                SizedBox(height: iconSpacing),
                 Text(
                   title,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 17,
+                    fontSize: titleFontSize,
                     color: Color(0xFF121212),
+                    height: 1.15,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                SizedBox(height: 4),
+                SizedBox(height: textSpacing),
                 Text(
                   subtitle,
-                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                  style: TextStyle(
+                    fontSize: subtitleFontSize,
+                    color: Colors.grey[500],
+                    height: 1.15,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -200,6 +222,19 @@ class MainMenuScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  double _getResponsiveValue(
+    Size size,
+    double small,
+    double medium,
+    double large,
+    double xlarge,
+  ) {
+    if (size.width < 400) return small;
+    if (size.width < 600) return medium;
+    if (size.width < 900) return large;
+    return xlarge;
   }
 
   Widget _buildFooter(BuildContext context) {
