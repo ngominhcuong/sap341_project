@@ -191,6 +191,93 @@ class ODataService {
     return response;
   }
 
+  String _extractODataErrorMessage(String responseBody) {
+    try {
+      final decoded = jsonDecode(responseBody);
+      if (decoded is! Map<String, dynamic>) {
+        return '';
+      }
+
+      final error = decoded['error'];
+      if (error is! Map<String, dynamic>) {
+        return '';
+      }
+
+      String message = '';
+      final rawMessage = error['message'];
+      if (rawMessage is Map<String, dynamic>) {
+        final value = rawMessage['value'];
+        if (value is String) {
+          message = value.trim();
+        }
+      } else if (rawMessage is String) {
+        message = rawMessage.trim();
+      }
+
+      final Set<String> detailMessages = <String>{};
+      final innerError = error['innererror'];
+      if (innerError is Map<String, dynamic>) {
+        final details = innerError['errordetails'];
+        if (details is List) {
+          for (final detail in details) {
+            if (detail is Map<String, dynamic>) {
+              final detailMessage = detail['message'];
+              if (detailMessage is String && detailMessage.trim().isNotEmpty) {
+                detailMessages.add(detailMessage.trim());
+              }
+            }
+          }
+        }
+      }
+
+      if (detailMessages.isNotEmpty) {
+        if (message.isNotEmpty && !detailMessages.contains(message)) {
+          return '$message; ${detailMessages.join('; ')}';
+        }
+        return detailMessages.join('; ');
+      }
+
+      return message;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _buildHttpErrorMessage(String action, http.Response response) {
+    final parsed = _extractODataErrorMessage(response.body);
+    if (parsed.isNotEmpty) {
+      return '$action (${response.statusCode}): $parsed';
+    }
+
+    final compactBody = response.body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compactBody.isEmpty) {
+      return '$action (${response.statusCode})';
+    }
+
+    final preview = compactBody.length > 300
+        ? '${compactBody.substring(0, 300)}...'
+        : compactBody;
+    return '$action (${response.statusCode}): $preview';
+  }
+
+  static String cleanErrorText(Object error) {
+    String text = error.toString().trim();
+    const prefixes = <String>['Exception:', 'Bad state:', 'Error:'];
+
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (final prefix in prefixes) {
+        if (text.startsWith(prefix)) {
+          text = text.substring(prefix.length).trim();
+          changed = true;
+        }
+      }
+    }
+
+    return text;
+  }
+
   // --- tạo Sales Order (deep insert) ---
   Future<Map<String, dynamic>> createSalesOrder(
     Map<String, dynamic> payload,
@@ -203,7 +290,9 @@ class ODataService {
     if (response.statusCode == 201) {
       return jsonDecode(response.body)['d'];
     } else {
-      throw Exception("Lỗi tạo SO: ${response.body}");
+      throw Exception(
+        _buildHttpErrorMessage('Không thể tạo Sales Order', response),
+      );
     }
   }
 
@@ -216,7 +305,7 @@ class ODataService {
 
     if (response.statusCode != 200) {
       throw Exception(
-        'Lỗi lấy Sales Order (${response.statusCode}): ${response.body}',
+        _buildHttpErrorMessage('Không thể tải danh sách Sales Order', response),
       );
     }
 
@@ -355,13 +444,7 @@ class ODataService {
       return body['d'] as Map<String, dynamic>? ?? <String, dynamic>{};
     }
 
-    if (response.statusCode == 500 && response.body.contains('innererror')) {
-      throw Exception("Lỗi backend GI: ${response.body}");
-    }
-
-    throw Exception(
-      "Lỗi tạo Goods Issue (${response.statusCode}): ${response.body}",
-    );
+    throw Exception(_buildHttpErrorMessage('Không thể post Goods Issue', response));
   }
 
   Future<void> updateStock(Map<String, dynamic> data) async {
@@ -375,9 +458,7 @@ class ODataService {
     final response = await _putWithCsrfRetry(url, jsonEncode(data));
 
     if (response.statusCode != 204 && response.statusCode != 200) {
-      throw Exception(
-        "Lỗi cập nhật SAP (${response.statusCode}): ${response.body}",
-      );
+      throw Exception(_buildHttpErrorMessage('Không thể cập nhật tồn kho SAP', response));
     }
     print("DEBUG: Cập nhật tồn kho thành công!");
   }

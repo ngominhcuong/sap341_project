@@ -375,7 +375,10 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
       _showFinalSuccess(matDoc: matDoc);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Lỗi SAP: $e"), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text("Lỗi SAP: ${ODataService.cleanErrorText(e)}"),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       setState(() => _isProcessing = false);

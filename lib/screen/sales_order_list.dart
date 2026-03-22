@@ -81,7 +81,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showErrorSnackBar('Lỗi SAP: $e');
+      _showErrorSnackBar('Lỗi SAP: ${ODataService.cleanErrorText(e)}');
     }
   }
 

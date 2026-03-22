@@ -381,7 +381,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
       await _clearDraft();
       _showSuccessAndNavigate(orderId, createdItems);
     } catch (e) {
-      _showErrorSnackBar("Lỗi SAP: $e");
+      _showErrorSnackBar("Lỗi SAP: ${ODataService.cleanErrorText(e)}");
     } finally {
       setState(() => _isSending = false);
     }
