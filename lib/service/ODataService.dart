@@ -11,8 +11,7 @@ class ODataService {
   final String username = dotenv.env['SAP_USERNAME'] ?? '';
   final String password = dotenv.env['SAP_PASSWORD'] ?? '';
 
-  // Cấu hình theo SEGW cho luồng Goods Issue deep insert.
-  // Nếu backend đổi tên, chỉ sửa các hằng số này.
+  // cấu hình theo SEGW cho luồng Goods Issue deep insert
   static const String goodsIssueEntitySet = 'StockUpdateSet';
   static const String goodsIssueItemsNavProperty = 'To_Items';
   static const String salesOrderEntitySet = 'SalesOrderHeaderSet';
@@ -21,7 +20,7 @@ class ODataService {
   String? _csrfToken;
   final Map<String, String> _sessionCookies = <String, String>{};
 
-  // Header xác thực cơ bản dùng cho các lệnh GET
+  // header xác thực cơ bản dùng cho các lệnh GET
   Map<String, String> get _authHeader {
     if (username.isEmpty || password.isEmpty) {
       throw StateError(
@@ -100,7 +99,7 @@ class ODataService {
     _extractCookies(response.headers['set-cookie']);
   }
 
-  // --- HÀM LẤY TOKEN & COOKIE (Cần thiết cho POST, PUT, DELETE) ---
+  // hàm lấy token và cookie (cần thiết cho POST, PUT, DELETE)
   Future<void> _fetchCsrfToken({bool forceRefresh = false}) async {
     if (forceRefresh) {
       _csrfToken = null;
@@ -118,7 +117,6 @@ class ODataService {
       },
       {
         'url': '$baseUrl/\$metadata',
-        // Metadata trả XML nên không dùng Accept JSON ở probe này.
         'headers': <String, String>{'Accept': 'application/xml'},
       },
       {'url': '$baseUrl/?\$format=json', 'headers': <String, String>{}},
@@ -193,7 +191,7 @@ class ODataService {
     return response;
   }
 
-  // --- 1. TẠO SALES ORDER (DEEP INSERT) ---
+  // --- tạo Sales Order (deep insert) ---
   Future<Map<String, dynamic>> createSalesOrder(
     Map<String, dynamic> payload,
   ) async {
@@ -209,7 +207,7 @@ class ODataService {
     }
   }
 
-  // --- 1B. XEM SALES ORDER (EXPANDED ENTITYSET) ---
+  // --- xem Sales Order (expanded entityset) ---
   Future<List<Map<String, dynamic>>> fetchSalesOrders({int top = 50}) async {
     final String query =
         '$baseUrl/$salesOrderEntitySet?\$format=json&\$expand=$salesOrderItemsNavProperty&\$top=$top';
@@ -258,11 +256,11 @@ class ODataService {
     return header;
   }
 
-  // --- 2. LẤY DANH SÁCH VẬT TƯ ---
+  // --- lấy danh sách vật tư ---
   Future<List<MaterialModel>> fetchMaterials({String? plant}) async {
     String url = "$baseUrl/MaterialSet?\$format=json";
 
-    // Thêm filter nếu có chọn nhà máy
+    // thêm filter nếu có chọn nhà máy
     if (plant != null && plant.isNotEmpty && plant != 'Tất cả') {
       url += "&\$filter=WERKS_D eq '$plant'";
     }
@@ -283,7 +281,7 @@ class ODataService {
     }
   }
 
-  // --- 3. LẤY TỒN KHO (Hỗ trợ cả lấy TOÀN BỘ hoặc LỌC) ---
+  // --- lấy tồn kho ---
   // Để lấy toàn bộ, chỉ cần gọi: fetchStocks()
   // Để lọc vật tư, gọi: fetchStocks(materialID: 'MATE_01')
   Future<List<StockModel>> fetchStocks({
@@ -333,8 +331,8 @@ class ODataService {
     }
   }
 
-  // --- 4. CẬP NHẬT TỒN KHO ---
-  // Deep insert Goods Issue theo Entity Set header trong SEGW (ví dụ: StockUpdateSet)
+  // --- cập nhật tồn kho ---
+  // deep insert Goods Issue theo Entity Set header trong SEGW (ví dụ: StockUpdateSet)
   Map<String, dynamic> buildGoodsIssuePayload({
     required String orderId,
     required List<Map<String, dynamic>> items,
@@ -366,7 +364,6 @@ class ODataService {
     );
   }
 
-  // Giữ hàm cũ để tương thích nếu màn khác còn dùng PUT từng dòng.
   Future<void> updateStock(Map<String, dynamic> data) async {
     final String matId = data['Materialid'];
     final String plant = data['Plant'];

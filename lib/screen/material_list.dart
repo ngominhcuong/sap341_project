@@ -3,6 +3,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:sap341/service/ODataService.dart';
 import 'package:sap341/model/Material.dart';
 import 'package:sap341/screen/stock.dart';
+import 'package:sap341/widget/searchable_dropdown.dart';
 
 class MaterialListScreen extends StatefulWidget {
   final bool isPicker;
@@ -27,13 +28,12 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
   String _searchKeyword = '';
 
   bool _isLoading = true;
-  bool _isFilterExpanded = false; // Trạng thái đóng/mở bộ lọc
+  bool _isFilterExpanded = false;
   int _currentPage = 1;
   final int _pageSize = 10;
 
   TextEditingController _searchController = TextEditingController();
 
-  // Palette màu sắc từ ví dụ của bạn
   final Color primaryGreen = const Color(0xFF1B5E20);
   final Color accentGreen = const Color(0xFF2E7D32);
   final Color backgroundLight = const Color(0xFFF2F5F2);
@@ -45,7 +45,6 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
     _loadData();
   }
 
-  // --- LOGIC DỮ LIỆU ---
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -142,7 +141,6 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
     );
   }
 
-  // --- UI: HEADER & BỘ LỌC THU GỌN ---
   Widget _buildElegantHeader() {
     return Container(
       padding: EdgeInsets.only(
@@ -169,7 +167,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
               ),
               Expanded(
                 child: Text(
-                  widget.isPicker ? "Chọn Vật Tư" : "Kho Vật Tư SAP",
+                  widget.isPicker ? "Chọn vật tư" : "Kho Vật tư",
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -257,11 +255,12 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
       child: Row(
         children: [
           Expanded(
-            child: _buildLabeledFilter(
-              "Base Unit",
-              _unitOptions,
-              _selectedUnit,
-              (v) {
+            child: SearchableDropdown(
+              label: "Đơn vị",
+              options: _unitOptions,
+              selectedValue: _selectedUnit,
+              primaryColor: primaryGreen,
+              onChanged: (v) {
                 setState(() => _selectedUnit = v!);
                 _runFilter();
               },
@@ -269,68 +268,22 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
           ),
           const SizedBox(width: 15),
           Expanded(
-            child: _buildLabeledFilter("Plant", _plantOptions, _selectedPlant, (
-              v,
-            ) {
-              setState(() => _selectedPlant = v!);
-              _runFilter();
-            }),
+            child: SearchableDropdown(
+              label: "Nhà máy",
+              options: _plantOptions,
+              selectedValue: _selectedPlant,
+              primaryColor: primaryGreen,
+              onChanged: (v) {
+                setState(() => _selectedPlant = v!);
+                _runFilter();
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLabeledFilter(
-    String label,
-    List<String> options,
-    String currentVal,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: currentVal,
-              isExpanded: true,
-              style: TextStyle(
-                color: primaryGreen,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-              items: options
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(e, overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- UI: CARD VẬT TƯ CHI TIẾT (PHIÊN BẢN CŨ NÂNG CẤP) ---
   Widget _buildMaterialList({Key? key}) {
     if (_pagedMaterials.isEmpty)
       return const Center(child: Text("Không tìm thấy dữ liệu"));
@@ -363,10 +316,8 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
           borderRadius: BorderRadius.circular(20),
           onTap: () {
             if (widget.isPicker) {
-              // Nếu là chế độ chọn vật tư (cho đơn hàng), trả về item
               Navigator.pop(context, item);
             } else {
-              // Mở tồn kho theo đúng vật tư được chọn.
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -478,7 +429,7 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
     );
   }
 
-  // --- UI: PHÂN TRANG SLIDING << < 1 2 3 4 5 > >> ---
+  // phân trang dạng trượt ngang
   Widget _buildSlidingPagination(int totalPages) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),

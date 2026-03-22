@@ -21,8 +21,6 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
   bool _showValidationErrors = false;
   DateTime? _lastDraftSavedAt;
   final Map<String, int> _fieldRefreshVersions = {};
-
-  // FIX LỖI 1: Khai báo biến quản lý kho đã chọn
   Map<int, StockModel?> _selectedStocks = {};
 
   final Color primaryGreen = Color(0xFF1B5E20);
@@ -296,17 +294,6 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
     );
   }
 
-  bool _isDuplicateMaterial(String materialId, int currentIndex) {
-    for (int i = 0; i < _items.length; i++) {
-      if (i == currentIndex) continue;
-      final existing = _items[i]['MaterialID']?.toString().trim() ?? '';
-      if (existing.isNotEmpty && existing == materialId.trim()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   Future<void> _openMaterialPicker(int index) async {
     final selected = await Navigator.push(
       context,
@@ -319,20 +306,11 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
       return;
     }
 
-    if (_isDuplicateMaterial(selected.materialID, index)) {
-      _showErrorSnackBar(
-        'Material ${selected.materialID} đã có trong danh sách, không thể thêm trùng.',
-      );
-      return;
-    }
-
     setState(() {
       _items[index]['MaterialID'] = selected.materialID;
       _items[index]['BaseUnit'] = selected.baseUnit;
       _items[index]['Plant'] = selected.plant;
       _bumpFieldRefreshVersion(_items[index]['ItemNo']?.toString() ?? '');
-
-      // Reset kho đã chọn của dòng hiện tại khi đổi material.
       _selectedStocks[index] = selected;
     });
     _saveDraft();
@@ -576,7 +554,7 @@ class _CreateSOScreenState extends State<CreateSOScreen> {
               ),
               Expanded(
                 child: Text(
-                  "Tạo Sales Order",
+                  "Tạo đơn hàng mới",
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,

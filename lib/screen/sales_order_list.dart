@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:sap341/screen/good_issue.dart';
 import 'package:sap341/service/ODataService.dart';
+import 'package:sap341/widget/searchable_dropdown.dart';
 
 class SalesOrderListScreen extends StatefulWidget {
   const SalesOrderListScreen({super.key});
@@ -243,7 +244,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
               ),
               const Expanded(
                 child: Text(
-                  'View Sales Order',
+                  'Xem các đơn hàng đã tạo',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -335,11 +336,12 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       child: Row(
         children: [
           Expanded(
-            child: _buildLabeledFilter(
-              'Doc Type',
-              _docTypeOptions,
-              _selectedDocType,
-              (v) {
+            child: SearchableDropdown(
+              label: 'Doc Type',
+              options: _docTypeOptions,
+              selectedValue: _selectedDocType,
+              primaryColor: primaryGreen,
+              onChanged: (v) {
                 setState(() => _selectedDocType = v!);
                 _runFilter();
               },
@@ -347,11 +349,12 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           ),
           const SizedBox(width: 15),
           Expanded(
-            child: _buildLabeledFilter(
-              'Sales Org',
-              _salesOrgOptions,
-              _selectedSalesOrg,
-              (v) {
+            child: SearchableDropdown(
+              label: 'Sales Org',
+              options: _salesOrgOptions,
+              selectedValue: _selectedSalesOrg,
+              primaryColor: primaryGreen,
+              onChanged: (v) {
                 setState(() => _selectedSalesOrg = v!);
                 _runFilter();
               },
@@ -359,55 +362,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildLabeledFilter(
-    String label,
-    List<String> options,
-    String currentVal,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: currentVal,
-              isExpanded: true,
-              style: TextStyle(
-                color: primaryGreen,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-              items: options
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(e, overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
     );
   }
 

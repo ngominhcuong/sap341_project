@@ -15,7 +15,7 @@ class SAPInventoryApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'SAP Inventory Management',
+      title: 'Hệ thống Bán hàng và Quản lý Tồn kho SAP',
 
       theme: ThemeData(
         useMaterial3: true,

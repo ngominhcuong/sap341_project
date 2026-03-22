@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:sap341/service/ODataService.dart';
 import 'package:sap341/model/Stock.dart';
+import 'package:sap341/widget/searchable_dropdown.dart';
 
 class StockScreen extends StatefulWidget {
   final String? materialID;
@@ -52,7 +53,6 @@ class _StockScreenState extends State<StockScreen> {
     _loadStockData();
   }
 
-  // --- LOGIC DỮ LIỆU ---
   Future<void> _loadStockData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -302,11 +302,12 @@ class _StockScreenState extends State<StockScreen> {
       child: Row(
         children: [
           Expanded(
-            child: _buildLabeledFilter(
-              "Kho",
-              _locationOptions,
-              _selectedLocation,
-              (v) {
+            child: SearchableDropdown(
+              label: "Kho",
+              options: _locationOptions,
+              selectedValue: _selectedLocation,
+              primaryColor: primaryGreen,
+              onChanged: (v) {
                 setState(() => _selectedLocation = v!);
                 _runFilter();
               },
@@ -314,11 +315,12 @@ class _StockScreenState extends State<StockScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: _buildLabeledFilter(
-              "Nhà máy",
-              _plantOptions,
-              _selectedPlant,
-              (v) {
+            child: SearchableDropdown(
+              label: "Nhà máy",
+              options: _plantOptions,
+              selectedValue: _selectedPlant,
+              primaryColor: primaryGreen,
+              onChanged: (v) {
                 setState(() => _selectedPlant = v!);
                 _runFilter();
               },
@@ -326,56 +328,6 @@ class _StockScreenState extends State<StockScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildLabeledFilter(
-    String label,
-    List<String> options,
-    String currentVal,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: currentVal,
-              isExpanded: true,
-              style: TextStyle(
-                color: primaryGreen,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-              items: options
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(e, overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
     );
   }
 

@@ -16,8 +16,6 @@ class GoodsIssueScreen extends StatefulWidget {
 class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
   final ODataService _service = ODataService();
   bool _isProcessing = false;
-
-  // Người dùng chỉ nhập thêm Movetype + Storageloc cho từng item
   final Map<int, TextEditingController> _moveTypeControllers = {};
   final Map<int, String?> _selectedStorageLocs = {};
   final Map<int, List<StockModel>> _stockOptionsByIndex = {};
@@ -51,9 +49,7 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: primaryGreen,
-        iconTheme: IconThemeData(
-          color: Colors.white,
-        ), // Đảm bảo nút back màu trắng
+        iconTheme: IconThemeData(color: Colors.white),
       ),
       body: Column(
         children: [
@@ -203,16 +199,16 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           ),
           value: currentValue,
           items: filteredStocks.map((stock) {
+            final displayKey = "${stock.storageLocation}|${stock.plant}";
             return DropdownMenuItem(
-              value: stock.storageLocation,
+              value: displayKey,
               child: Text(
-                "Kho: ${stock.storageLocation} (Tồn: ${stock.availableQty})",
+                "${stock.storageLocation} - ${stock.plant} - Tồn: ${stock.availableQty}",
               ),
             );
           }).toList(),
           onChanged: (val) {
             setState(() {
-              _stockOptionsByIndex[index] = filteredStocks;
               _selectedStorageLocs[index] = val;
             });
           },
@@ -253,8 +249,8 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
   Future<void> _confirmGoodsIssue() async {
     for (int i = 0; i < widget.items.length; i++) {
       final String moveType = _moveTypeControllers[i]?.text.trim() ?? '';
-      final String storageLoc = _selectedStorageLocs[i]?.trim() ?? '';
-      if (moveType.isEmpty || storageLoc.isEmpty) {
+      final String selectedValue = _selectedStorageLocs[i]?.trim() ?? '';
+      if (moveType.isEmpty || selectedValue.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -267,37 +263,41 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
       }
 
       final item = widget.items[i];
-      final itemPlant = item['Plant']?.toString().trim() ?? '';
       final stockOptions = _stockOptionsByIndex[i] ?? const <StockModel>[];
+
+      // Parse storageloc|plant từ selectedValue
+      final parts = selectedValue.split('|');
+      final selectedSloc = parts.isNotEmpty ? parts[0] : '';
+      final selectedPlantValue = parts.length > 1 ? parts[1] : '';
+
       StockModel? matchedStock;
       for (final stock in stockOptions) {
-        if (stock.storageLocation == storageLoc) {
+        if (stock.storageLocation == selectedSloc &&
+            stock.plant == selectedPlantValue) {
           matchedStock = stock;
           break;
         }
       }
-      final resolvedPlant = itemPlant.isNotEmpty
-          ? itemPlant
-          : (matchedStock?.plant.trim() ?? '');
 
-      final itemNo = item['ItemNo']?.toString() ?? (i + 1).toString();
       final qtyRaw = item['Quantity']?.toString().trim() ?? '';
       final requestQty = double.tryParse(qtyRaw);
       if (requestQty == null || requestQty <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Dòng $itemNo có số lượng không hợp lệ.'),
+            content: Text('Dòng ${item['ItemNo']} có số lượng không hợp lệ.'),
             backgroundColor: Colors.orange,
           ),
         );
         return;
       }
 
-      if (matchedStock != null && requestQty > matchedStock.availableQty) {
+      if (matchedStock != null &&
+          double.parse(requestQty.toString()) >
+              double.parse(matchedStock.availableQty.toString())) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Dòng $itemNo vượt tồn kho (${matchedStock.availableQty}). Không thể xuất $requestQty.',
+              'Dòng ${item['ItemNo']} vượt tồn kho (${matchedStock.availableQty}). Không thể xuất $requestQty.',
             ),
             backgroundColor: Colors.red,
           ),
@@ -305,11 +305,11 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
         return;
       }
 
-      if (resolvedPlant.isEmpty) {
+      if (selectedPlantValue.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Dòng $itemNo chưa có Plant. Vui lòng kiểm tra vật tư/kho đã chọn.',
+              'Dòng ${item['ItemNo']} chưa có Plant. Vui lòng kiểm tra vật tư/kho đã chọn.',
             ),
             backgroundColor: Colors.orange,
           ),
@@ -325,11 +325,18 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
         widget.items.length,
         (i) {
           final item = widget.items[i];
-          final selectedSloc = _selectedStorageLocs[i] ?? '';
+          final selectedValue = _selectedStorageLocs[i] ?? '';
+
+          // Parse storageloc|plant từ selectedValue
+          final parts = selectedValue.split('|');
+          final selectedSloc = parts.isNotEmpty ? parts[0] : '';
+          final selectedPlantValue = parts.length > 1 ? parts[1] : '';
+
           final stockOptions = _stockOptionsByIndex[i] ?? const <StockModel>[];
           StockModel? matchedStock;
           for (final stock in stockOptions) {
-            if (stock.storageLocation == selectedSloc) {
+            if (stock.storageLocation == selectedSloc &&
+                stock.plant == selectedPlantValue) {
               matchedStock = stock;
               break;
             }
@@ -340,11 +347,10 @@ class _GoodsIssueScreenState extends State<GoodsIssueScreen> {
           final resolvedBaseUnit = baseUnitFromStock.isNotEmpty
               ? baseUnitFromStock
               : (baseUnitFromItem.isNotEmpty ? baseUnitFromItem : 'EA');
-          final plantFromItem = item['Plant']?.toString().trim() ?? '';
-          final plantFromStock = matchedStock?.plant.trim() ?? '';
-          final resolvedPlant = plantFromItem.isNotEmpty
-              ? plantFromItem
-              : plantFromStock;
+
+          final resolvedPlant = selectedPlantValue.isNotEmpty
+              ? selectedPlantValue
+              : item['Plant']?.toString().trim() ?? '';
 
           return {
             "Orderid": widget.orderId,
